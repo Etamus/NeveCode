@@ -1,12 +1,21 @@
-<img width="1400" height="350" alt="Neve Code" src="https://github.com/user-attachments/assets/c9d84af3-447c-49af-b951-31c62fbe9310" />
+<img width="1400" height="350" alt="Neve Code (1)" src="https://github.com/user-attachments/assets/82cb3a9d-4a2c-41f7-9dd4-ed2cb5388fd8" />
 
 ---
 
-**Neve Code** é uma extensão de agente de codificação para VS Code que opera de forma totalmente offline, dispensando o uso de APIs pagas ou conexão com a internet. Ela integra um painel de chat interativo diretamente no editor, permitindo uma comunicação fluida e direta com o servidor llama.cpp em execução na sua própria máquina.
+**Neve Code** é um agente de codificação integrado ao VS Code que viabiliza a execução de modelos de linguagem de grande porte (LLMs) diretamente em seu ambiente de desenvolvimento local. Ao operar inteiramente offline e sem dependência de APIs de terceiros, a solução oferece uma experiência de assistência por IA focada em privacidade e soberania de dados, utilizando o ecossistema llama.cpp para processar modelos no formato GGUF. A ferramenta disponibiliza um painel de chat dedicado para interação direta com o modelo, proporcionando suporte contínuo ao fluxo de trabalho de programação dentro do editor.
 
 ---
 
-<img width="680" height="1004" alt="{CE032475-C572-433F-A4F3-2DCF85DE983F}" src="https://github.com/user-attachments/assets/6fb86fe6-0125-4542-8540-cb090a38f3b7" />
+<table>
+  <tr>
+    <td align="center">
+      <img width="514" alt="Neve Code" src="https://github.com/user-attachments/assets/c94ab93b-f9f9-479b-a961-77c987bdf27e" />
+    </td>
+    <td align="center">
+      <img width="511" alt="Neve Code" src="https://github.com/user-attachments/assets/ca4d95e6-a61d-42b9-9749-124c8efa2f93" />
+    </td>
+  </tr>
+</table>
 
 ---
 
