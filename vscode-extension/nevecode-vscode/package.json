@@ -1,0 +1,168 @@
+{
+  "name": "nevecode-vscode",
+  "displayName": "Neve Code",
+  "description": "Painel lateral do Neve Code para VS Code com comportamento de início baseado em projeto e Centro de Controle.",
+  "version": "0.2.0",
+  "publisher": "devnull-bootloader",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Themes",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:nevecode.start",
+    "onCommand:nevecode.startInWorkspaceRoot",
+    "onCommand:nevecode.openDocs",
+    "onCommand:nevecode.openSetupDocs",
+    "onCommand:nevecode.openWorkspaceProfile",
+    "onCommand:nevecode.newChat",
+    "onCommand:nevecode.openChat",
+    "onCommand:nevecode.resumeSession",
+    "onCommand:nevecode.abortChat",
+    "onView:nevecode.chat"
+  ],
+  "main": "./src/extension.js",
+  "files": [
+    "README.md",
+    "media/**",
+    "src/extension.js",
+    "src/presentation.js",
+    "src/state.js",
+    "src/chat/**",
+    "themes/**"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "nevecode.start",
+        "title": "Neve Code: Iniciar no Terminal",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.startInWorkspaceRoot",
+        "title": "Neve Code: Iniciar na Raiz do Workspace",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.openDocs",
+        "title": "Neve Code: Abrir Repositório",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.openSetupDocs",
+        "title": "Neve Code: Abrir Guia de Configuração",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.openWorkspaceProfile",
+        "title": "Neve Code: Abrir Perfil do Workspace",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.newChat",
+        "title": "Neve Code: Nova Conversa",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.openChat",
+        "title": "Neve Code: Abrir Painel de Chat",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.resumeSession",
+        "title": "Neve Code: Retomar Sessão",
+        "category": "Neve Code"
+      },
+      {
+        "command": "nevecode.abortChat",
+        "title": "Neve Code: Interromper Geração",
+        "category": "Neve Code"
+      }
+    ],
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "nevecode",
+          "title": "Neve Code",
+          "icon": "media/nevecode.svg"
+        }
+      ]
+    },
+    "views": {
+      "nevecode": [
+        {
+          "id": "nevecode.chat",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "nevecode.openChat",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
+      }
+    ],
+    "configuration": {
+      "title": "Neve Code",
+      "properties": {
+        "nevecode.launchCommand": {
+          "type": "string",
+          "default": "nevecode",
+          "description": "Comando executado no terminal integrado ao iniciar o NeveCode."
+        },
+        "nevecode.terminalName": {
+          "type": "string",
+          "default": "Neve Code",
+          "description": "Nome da aba do terminal integrado para sessões do NeveCode."
+        },
+        "nevecode.useOpenAIShim": {
+          "type": "boolean",
+          "default": false,
+          "description": "Define CLAUDE_CODE_USE_OPENAI=1 nos terminais do NeveCode (para provedores locais como llama.cpp ou Ollama)."
+        },
+        "nevecode.permissionMode": {
+          "type": "string",
+          "default": "acceptEdits",
+          "enum": ["default", "acceptEdits", "bypassPermissions", "plan"],
+          "enumDescriptions": [
+            "Solicita permissão em cada uso de ferramenta (requer aprovação manual)",
+            "Aprova autom. edições de arquivos, solicita para outras operações (recomendado)",
+            "Aprova autom. todas as operações sem solicitar",
+            "Modo somente leitura — nenhuma modificação de arquivo permitida"
+          ],
+          "description": "Modo de permissão para sessões de chat. Controla quais operações de ferramentas são aprovadas automaticamente."
+        }
+      }
+    },
+    "themes": [
+      {
+        "label": "NeveCode Terminal Black",
+        "uiTheme": "vs-dark",
+        "path": "./themes/NeveCode-Terminal-Black.json"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node --test ./src/*.test.js",
+    "lint": "node scripts/lint.js",
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "keywords": [
+    "nevecode",
+    "terminal",
+    "theme",
+    "cli",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gitlawb/openclaude"
+  },
+  "license": "MIT"
+}
+

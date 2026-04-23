@@ -1,0 +1,8 @@
+node_modules/
+dist/
+package-lock.json
+models/*
+!models/.gitkeep
+venv/
+.venv/
+llama-bin/
