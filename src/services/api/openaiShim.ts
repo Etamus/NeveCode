@@ -1490,6 +1490,18 @@ class OpenAIShimMessages {
       delete body.store
     }
 
+    // For local reasoning models (e.g. Qwen3 via llama-server), append /no_think
+    // to the system prompt to suppress internal chain-of-thought. Without this,
+    // Qwen3 spends thousands of context tokens on CoT, degrading quality on small
+    // models and causing premature EOS after brief visible output.
+    if (isLocal) {
+      const msgs = openaiMessages as Array<{ role: string; content: unknown }>
+      const sysMsg = msgs.find(m => m.role === 'system')
+      if (sysMsg && typeof sysMsg.content === 'string') {
+        sysMsg.content = sysMsg.content + '\n/no_think'
+      }
+    }
+
     if (params.temperature !== undefined) body.temperature = params.temperature
     if (params.top_p !== undefined) body.top_p = params.top_p
 

@@ -224,6 +224,26 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       border-top: 1px solid var(--oc-border-soft);
       margin: 8px 0;
     }
+    .msg-assistant .md-content table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 6px 0;
+      font-size: 13px;
+    }
+    .msg-assistant .md-content th,
+    .msg-assistant .md-content td {
+      border: 1px solid var(--oc-border);
+      padding: 5px 10px;
+      text-align: left;
+    }
+    .msg-assistant .md-content th {
+      background: var(--oc-panel-strong);
+      font-weight: 700;
+      color: var(--oc-text);
+    }
+    .msg-assistant .md-content tr:nth-child(even) td {
+      background: var(--oc-panel-soft);
+    }
 
     /* inline code */
     .md-content code:not(.code-block code) {
@@ -983,61 +1003,110 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   /* ── Markdown renderer ── */
   function renderMarkdown(text) {
     if (!text) return '';
-    let html = escapeForMd(text);
 
-    // fenced code blocks
-    html = html.replace(/\`\`\`(\\w*?)\\n([\\s\\S]*?)\`\`\`/g, (_, lang, code) => {
+    // Step 1: extract fenced code blocks before any escaping
+    const codeBlocks = [];
+    // Backtick char code = 96; use new RegExp so backticks don't break the template literal
+    const BTICK = String.fromCharCode(96);
+    const FENCE_RE = new RegExp(BTICK+BTICK+BTICK+'([a-zA-Z0-9_]*)\\n([\\\\s\\\\S]*?)'+BTICK+BTICK+BTICK, 'g');
+    let raw = text.replace(FENCE_RE, (_, lang, code) => {
       const langLabel = lang || 'text';
-      const highlighted = highlightCode(code, langLabel);
+      const safeCode = code
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const highlighted = highlightCode(safeCode, langLabel);
       const id = 'cb-' + Math.random().toString(36).slice(2, 8);
-      return '<div class="code-wrapper"><div class="code-header">' +
+      const block = '<div class="code-wrapper"><div class="code-header">' +
         '<span>' + langLabel + '</span>' +
         '<button class="code-copy-btn" data-copy-id="' + id + '">Copiar</button></div>' +
         '<code class="code-block" id="' + id + '">' + highlighted + '</code></div>';
+      codeBlocks.push(block);
+      return '\x00CODE' + (codeBlocks.length - 1) + '\x00';
     });
 
-    // inline code
-    html = html.replace(/\`([^\`]+?)\`/g, '<code>$1</code>');
+    // Step 2: escape HTML special chars for remaining text
+    let html = raw
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-    // headings
+    // Step 3: inline code (backtick spans) — use new RegExp to avoid backtick breaking template literal
+    const INLINE_CODE_RE = new RegExp(BTICK+'([^'+BTICK+'\\n]+?)'+BTICK, 'g');
+    html = html.replace(INLINE_CODE_RE, (_, code) =>
+      '<code>' + code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code>'
+    );
+
+    // Step 4: GFM tables — must run before paragraph logic
+    html = html.replace(/^(\\|.+)\\n(\\|\\s*[-:]+[-| :\\s]*\\n)((?:\\|.+\\n?)*)/gm, (match) => {
+      const lines = match.trim().split('\\n');
+      const headerCells = lines[0].split('|').filter((_, i, a) => i > 0 && i < a.length - 1)
+        .map(c => '<th>' + c.trim() + '</th>');
+      const bodyLines = lines.slice(2);
+      const rows = bodyLines.map(line => {
+        const cells = line.split('|').filter((_, i, a) => i > 0 && i < a.length - 1)
+          .map(c => '<td>' + c.trim() + '</td>');
+        return cells.length ? '<tr>' + cells.join('') + '</tr>' : '';
+      }).filter(Boolean);
+      return '<table><thead><tr>' + headerCells.join('') + '</tr></thead>' +
+        (rows.length ? '<tbody>' + rows.join('') + '</tbody>' : '') + '</table>';
+    });
+
+    // Step 5: headings
+    html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
     html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
 
-    // blockquotes
+    // Step 6: blockquotes
     html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
 
-    // hr
+    // Step 7: hr
     html = html.replace(/^---$/gm, '<hr/>');
 
-    // bold / italic
-    html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-    html = html.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
+    // Step 8: bold and italic
+    html = html.replace(/\\*\\*([^*]+?)\\*\\*/g, '<strong>$1</strong>');
+    html = html.replace(/\\*([^*]+?)\\*/g, '<em>$1</em>');
 
-    // links
+    // Step 9: links
     html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" title="$2">$1</a>');
 
-    // unordered lists (simple) — handles - , * and literal • bullets
-    html = html.replace(/^[•\\-\\*] (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/((?:<li>.*<\\/li>\\n?)+)/g, '<ul>$1</ul>');
+    // Step 10: lists — group consecutive list items into ul/ol
+    // Mark unordered items
+    html = html.replace(/^[ \\t]*[•\\-\\*] (.+)$/gm, '<li class="ul-item">$1</li>');
+    // Mark ordered items
+    html = html.replace(/^[ \\t]*\\d+\\. (.+)$/gm, '<li class="ol-item">$1</li>');
+    // Wrap consecutive ul items — strip \\n between <li> so Step 12 won't inject <br/> between items
+    html = html.replace(/((?:<li class="ul-item">.*<\\/li>\\n?)+)/g, (m) =>
+      '<ul>' + m.replace(/ class="ul-item"/g, '').replace(/\\n/g, '') + '</ul>');
+    // Wrap consecutive ol items
+    html = html.replace(/((?:<li class="ol-item">.*<\\/li>\\n?)+)/g, (m) =>
+      '<ol>' + m.replace(/ class="ol-item"/g, '').replace(/\\n/g, '') + '</ol>');
 
-    // ordered lists
-    html = html.replace(/^\\d+\\. (.+)$/gm, '<li>$1</li>');
-
-    // paragraphs (double newline)
-    html = html.replace(/\\n\\n/g, '</p><p>');
+    // Step 11: paragraphs from double newlines
+    html = html.replace(/\\n\\n+/g, '</p><p>');
     html = '<p>' + html + '</p>';
+
+    // Step 12: single newlines → <br> inside paragraphs
+    html = html.replace(/<p>([^]*?)<\\/p>/g, (_, inner) =>
+      '<p>' + inner.replace(/\\n/g, '<br/>') + '</p>'
+    );
+
+    // Step 13: clean up empty/mismatched paragraph tags around block elements
+    const blockTags = ['h1','h2','h3','h4','ul','ol','table','blockquote','hr','div'];
+    // Step 13a: remove <br/> immediately before any block-level opener (eliminates blank-line gap)
+    const blockOpenPattern = new RegExp('<br\\s*\\/?>(\\s*)(<(?:' + blockTags.join('|') + ')[^>]*>)', 'g');
+    html = html.replace(blockOpenPattern, '$1$2');
+    blockTags.forEach(tag => {
+      const open = new RegExp('<p>(<' + tag + '[^>]*>)', 'g');
+      const close = new RegExp('(<\\/' + tag + '>)<\\/p>', 'g');
+      const selfClose = new RegExp('<p>(<' + tag + '[^/]*\\/?>)<\\/p>', 'g');
+      html = html.replace(open, '$1');
+      html = html.replace(close, '$1');
+      html = html.replace(selfClose, '$1');
+    });
     html = html.replace(/<p><\\/p>/g, '');
-    html = html.replace(/<p>(<h[123]>)/g, '$1');
-    html = html.replace(/(<\\/h[123]>)<\\/p>/g, '$1');
-    html = html.replace(/<p>(<ul>)/g, '$1');
-    html = html.replace(/(<\\/ul>)<\\/p>/g, '$1');
-    html = html.replace(/<p>(<blockquote>)/g, '$1');
-    html = html.replace(/(<\\/blockquote>)<\\/p>/g, '$1');
-    html = html.replace(/<p>(<hr\\/>)/g, '$1');
-    html = html.replace(/(<hr\\/>)<\\/p>/g, '$1');
-    html = html.replace(/<p>(<div class="code-wrapper">)/g, '$1');
-    html = html.replace(/(<\\/div>)<\\/p>/g, '$1');
+
+    // Step 14: restore code blocks
+    codeBlocks.forEach((block, i) => {
+      html = html.replace('\\x00CODE' + i + '\\x00', block);
+    });
 
     return html;
   }
