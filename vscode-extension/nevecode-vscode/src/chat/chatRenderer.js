@@ -86,6 +86,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      margin-right: 8px;
     }
     .chat-header .brand.brand-hidden { visibility: hidden; }
     .chat-header .brand-accent { color: var(--oc-accent-bright); }
@@ -155,7 +156,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       padding: 32px 16px;
       gap: 16px;
     }
-    .welcome-logo { display: flex; align-items: center; justify-content: center; color: var(--oc-text-dim); margin-bottom: 4px; line-height: 1; gap: 14px; margin-right: 28px; }
+    .welcome-logo { display: flex; align-items: center; justify-content: center; color: var(--oc-text-dim); margin-bottom: 4px; line-height: 1; gap: 14px; margin-right: 24px; }
     .welcome-logo svg { display: block; max-width: 100%; }
     .welcome-logo-img { width: 52px; height: 52px; object-fit: contain; display: block; }
     .welcome-logo-text { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 26px; font-weight: 700; letter-spacing: 1px; color: var(--oc-text-dim); margin-left: -2px; margin-top: -3px; }
@@ -188,7 +189,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .msg-assistant {
       align-self: flex-start;
       max-width: 95%;
-      padding: 4px 0 6px;
+      padding: 4px 8px 6px;
       background: transparent;
       border: none;
       word-break: break-word;
@@ -198,7 +199,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .msg-assistant .md-content p { margin: 0 0 5px; }
     .msg-assistant .md-content p:last-child { margin-bottom: 0; }
     .msg-assistant .md-content ul,
-    .msg-assistant .md-content ol { padding-left: 18px; margin: 0 0 5px; }
+    .msg-assistant .md-content ol { padding-left: 22px; margin: 0 0 5px; }
     .msg-assistant .md-content li { margin-bottom: 2px; }
     .msg-assistant .md-content h1,
     .msg-assistant .md-content h2,
@@ -287,7 +288,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
     /* ── Tool use card ── */
     .tool-card {
-      margin: 1px 0;
+      margin: 5px 0;
       border-radius: 8px;
       border: 1px solid var(--oc-tool-border);
       background: var(--oc-tool-bg);
@@ -303,7 +304,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     }
     .tool-icon { font-size: 14px; flex-shrink: 0; display: none; }
     .tool-name { font-weight: 600; font-size: 12px; color: var(--oc-text); flex: 1; }
-    .tool-status { font-size: 11px; color: var(--oc-text-soft); }
+    .tool-status { font-size: 11px; color: var(--oc-text-soft); flex-shrink: 0; }
     .tool-status.running { color: var(--oc-text-dim); }
     .tool-status.error { color: var(--oc-critical); }
     .tool-status.complete { color: var(--oc-text-soft); }
@@ -317,6 +318,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       align-items: center;
       justify-content: center;
     }
+    .tool-card.no-output .tool-chevron { visibility: hidden; }
+    .tool-card.no-output .tool-header { cursor: default; }
     .tool-card.expanded .tool-chevron { transform: rotate(180deg); }
     .tool-body {
       display: none;
@@ -931,8 +934,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     // links
     html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" title="$2">$1</a>');
 
-    // unordered lists (simple)
-    html = html.replace(/^[\\-\\*] (.+)$/gm, '<li>$1</li>');
+    // unordered lists (simple) — handles - , * and literal • bullets
+    html = html.replace(/^[•\\-\\*] (.+)$/gm, '<li>$1</li>');
     html = html.replace(/((?:<li>.*<\\/li>\\n?)+)/g, '<ul>$1</ul>');
 
     // ordered lists
@@ -1101,7 +1104,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   function appendToolCard(toolUse) {
     const { container } = getOrCreateAssistantEl();
     const card = document.createElement('div');
-    card.className = 'tool-card expanded';
+    card.className = 'tool-card';
     card.dataset.toolId = toolUse.id || '';
     const statusClass = toolUse.status || 'running';
     const statusLabel = statusClass === 'running'
@@ -1153,8 +1156,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         '<span class="tool-name">' + escapeForMd(toolUse.displayName || toolUse.name || 'Tool') +
           (fileLink ? ' <span class="tool-path">' + fileLink + '</span>' : '') +
         '</span>' +
-        '<span class="tool-status ' + statusClass + '">' + statusLabel + '</span>' +
         '<span class="tool-chevron"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>' +
+        '<span class="tool-status ' + statusClass + '">' + statusLabel + '</span>' +
       '</div>' +
       '<div class="tool-body">' +
         pathDisplay +
@@ -1162,8 +1165,9 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         '<div class="tool-output-label">Saída</div>' +
         '<div class="tool-output-content" data-tool-output="' + (toolUse.id || '') + '" data-running="true"></div>' +
       '</div>';
+    card.classList.add('no-output');
     card.querySelector('.tool-header').addEventListener('click', () => {
-      card.classList.toggle('expanded');
+      if (!card.classList.contains('no-output')) card.classList.toggle('expanded');
     });
     container.appendChild(card);
     scrollToBottom();
@@ -1183,6 +1187,9 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         statusEl.className = 'tool-status ' + (isError ? 'error' : 'complete');
         statusEl.textContent = isError ? 'Erro' : 'Concluído';
       }
+      // Output arrived — enable expand and auto-open the card
+      card.classList.remove('no-output');
+      card.classList.add('expanded');
     }
   }
 
@@ -1191,6 +1198,12 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     if (outputEl && outputEl.dataset.running === 'true') {
       outputEl.textContent = content || '';
       delete outputEl.dataset.running;
+    }
+    // Progress arrived mid-run — enable expand and auto-open
+    const card = document.querySelector('[data-tool-id="' + toolUseId + '"]');
+    if (card && content && content.trim()) {
+      card.classList.remove('no-output');
+      card.classList.add('expanded');
     }
   }
 
@@ -1248,6 +1261,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     const outputLabel = '<div class="tool-output-label">Saída</div>';
 
     body.innerHTML = pathHtml + diffHtml + outputLabel + outputHtml;
+    card.classList.remove('no-output');
     card.classList.add('expanded');
     scrollToBottom();
   }
@@ -1627,7 +1641,17 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         scrollToBottom();
         break;
 
+      case 'process_ready':
+        // Process just started — only update status dot, never reset streaming
+        // (user may already be waiting for a response mid-restart).
+        if (!isStreaming) {
+          statusDot.className = 'status-dot connected';
+          statusText.textContent = '';
+        }
+        break;
+
       case 'connected':
+        // Process exited — always unblock the UI regardless of streaming state.
         setStreaming(false);
         statusDot.className = 'status-dot connected';
         statusText.textContent = '';

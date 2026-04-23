@@ -114,6 +114,16 @@ class ProcessManager {
     this._process.stderr.on('data', (chunk) => this._onStderr(chunk));
     this._process.on('error', (err) => this._onErrorEmitter.fire(err));
     this._process.on('close', (code, signal) => {
+      // Flush any remaining buffered output — if the last NDJSON line didn't
+      // end with \n the split('\n') in _onData leaves it in _buffer.
+      if (this._buffer.trim()) {
+        const msg = parseStdoutLine(this._buffer);
+        if (msg) {
+          this._extractSessionId(msg);
+          this._onMessageEmitter.fire(msg);
+        }
+        this._buffer = '';
+      }
       this._process = null;
       this._onExitEmitter.fire({ code, signal });
     });

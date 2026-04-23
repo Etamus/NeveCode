@@ -26,7 +26,7 @@ async function openFileInEditor(filePath) {
 
 function getLaunchConfig() {
   const cfg = vscode.workspace.getConfiguration('nevecode');
-  const command = cfg.get('launchCommand', 'openclaude');
+  const command = cfg.get('launchCommand', 'nevecode');
   const shimEnabled = cfg.get('useOpenAIShim', false);
   const permissionMode = cfg.get('permissionMode', 'acceptEdits');
   const env = {};
@@ -82,7 +82,8 @@ class ChatController {
     if (!opts.continueSession && !opts.sessionId) {
       this._messages = [];
     }
-    this._currentSessionId = opts.sessionId || this._currentSessionId || null;
+    // Use the explicitly requested sessionId only — never inherit a leftover id.
+    this._currentSessionId = opts.sessionId || null;
 
     const { command, cwd, env, permissionMode } = getLaunchConfig();
 
@@ -116,6 +117,10 @@ class ChatController {
         this._broadcast({ type: 'stream_end', text: this._accumulatedText, usage: null, final: true });
       } else if (this._streaming) {
         this._broadcast({ type: 'stream_end', text: '', usage: (this._lastResult || {}).usage || null, final: true });
+      } else {
+        // Process exited without ever streaming — still need to unblock the UI.
+        // Send a final stream_end so the renderer's isStreaming flag is cleared.
+        this._broadcast({ type: 'stream_end', text: '', usage: null, final: true });
       }
       this._streaming = false;
       this._accumulatedText = '';
@@ -123,13 +128,16 @@ class ChatController {
       this._lastResult = null;
       this._broadcast({
         type: 'connected',
-        message: code === 0 ? 'Pronto' : `Processo encerrado (código ${code})`,      });
+        message: code === 0 ? 'Pronto' : `Processo encerrado (código ${code})`,
+      });
       this._onDidChangeState.fire('idle');
     });
 
     try {
       this._process.start();
-      this._broadcast({ type: 'connected', message: 'Conectado' });
+      // Use 'process_ready' instead of 'connected' so the renderer doesn't
+      // reset the streaming state while the user is waiting for a response.
+      this._broadcast({ type: 'process_ready', message: 'Conectado' });
       this._onDidChangeState.fire('connected');
     } catch (err) {
       this._broadcast({ type: 'error', message: `Falha ao iniciar: ${err.message}` });
@@ -141,16 +149,23 @@ class ChatController {
       this._process.dispose();
       this._process = null;
     }
+    // Clear session ID so the next startSession begins a brand-new session,
+    // not a resume of the stopped one.
+    this._currentSessionId = null;
+    this._messages = [];
   }
 
   async sendMessage(text) {
     // Keep the process alive for multi-turn — just send directly.
     // The CLI maintains full session state (tools, history) across turns.
-    // Only start a new process if none exists or it died.
+    // Only restart if the process died unexpectedly mid-session (resume with
+    // current session id). If _currentSessionId is null, start fresh.
     if (!this._process || !this._process.running) {
-      await this.startSession({
-        sessionId: this._currentSessionId || undefined,
-      });
+      await this.startSession(
+        this._currentSessionId
+          ? { sessionId: this._currentSessionId }
+          : {},
+      );
     }
     await this._doSend(text);
   }
@@ -316,8 +331,15 @@ class ChatController {
 
     // Session result — turn is complete. Go idle. The process stays alive
     // in stream-json mode for multi-turn conversation.
-    if (msg.type === 'result' && msg.subtype) {
+    // Note: we match on type === 'result' without requiring msg.subtype to be
+    // truthy — some CLI versions emit result without a subtype field.
+    if (msg.type === 'result') {
       this._lastResult = msg;
+      // For error subtypes, surface the error message to the user
+      if (msg.subtype === 'error') {
+        const errorText = msg.error || msg.message || msg.result || 'Erro durante a geração';
+        this._broadcast({ type: 'error', message: errorText });
+      }
       // Only use result text if nothing was shown via streaming yet
       const text = this._accumulatedText || '';
       this._broadcast({ type: 'stream_end', text, usage: msg.usage || null, final: true });
