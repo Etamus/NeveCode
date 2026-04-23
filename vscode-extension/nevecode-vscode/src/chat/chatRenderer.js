@@ -288,7 +288,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
     /* ── Tool use card ── */
     .tool-card {
-      margin: 5px 0;
+      margin: 3px 0;
       border-radius: 8px;
       border: 1px solid var(--oc-tool-border);
       background: var(--oc-tool-bg);
@@ -547,22 +547,69 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
     /* ── Input area ── */
     .input-area {
-      padding: 10px 12px;
-      border-top: none;
-      background: transparent;
+      padding: 8px 10px 10px;
       flex-shrink: 0;
     }
-    .input-wrap {
-      position: relative;
-    }
-    .input-area textarea {
-      width: 100%;
-      min-height: 84px;
-      max-height: 200px;
-      padding: 10px 48px 10px 14px;
+    /* Single bordered box — chips + textarea + action bar all inside */
+    .input-box {
       border: 1px solid var(--oc-border-soft);
       border-radius: 10px;
       background: rgba(255,255,255,0.04);
+      display: flex;
+      flex-direction: column;
+      transition: border-color 120ms;
+    }
+    .input-box:focus-within { border-color: var(--oc-accent); }
+
+    /* Chips inside the box */
+    .file-chips-row {
+      display: none;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding: 8px 10px 5px;
+    }
+    .file-chips-row.has-chips { display: flex; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .file-chip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 6px 3px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--oc-border-soft);
+      background: rgba(152,152,176,0.10);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 11px;
+      color: var(--oc-text-dim);
+      max-width: 200px;
+      cursor: default;
+      user-select: none;
+    }
+    .file-chip-icon { flex-shrink: 0; opacity: 0.7; }
+    .file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .file-chip-remove {
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+      cursor: pointer;
+      opacity: 0.55;
+      color: var(--oc-text-soft);
+      transition: opacity 120ms, background 120ms;
+    }
+    .file-chip-remove:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+
+    /* Textarea — no border, transparent (box provides the border) */
+    .input-area textarea {
+      width: 100%;
+      min-height: 68px;
+      max-height: 180px;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 0;
+      background: transparent;
       color: var(--oc-text);
       font-family: inherit;
       font-size: 13px;
@@ -572,16 +619,45 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       box-sizing: border-box;
     }
     .input-area textarea::placeholder { color: var(--oc-text-soft); }
-    .input-area textarea:focus { border-color: var(--oc-accent); }
     .input-area textarea::-webkit-scrollbar { display: none; }
     .input-area textarea { scrollbar-width: none; }
+
+    /* Action bar inside the box: attach btn left, send btn right */
+    .input-box-bar {
+      display: flex;
+      align-items: center;
+      padding: 4px 6px;
+      gap: 4px;
+    }
+
+    /* Attach "+" button */
+    .attach-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      border: none;
+      background: transparent;
+      color: var(--oc-text-soft);
+      font-size: 19px;
+      font-weight: 300;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: color 120ms, background 120ms;
+      padding: 0;
+      user-select: none;
+    }
+    .attach-btn:hover { color: var(--oc-text); background: rgba(152,152,176,0.08); }
+
+    /* Send / stop button */
     .send-btn {
-      position: absolute;
-      right: 8px;
-      bottom: 8px;
-      width: 30px;
-      height: 30px;
-      border-radius: 8px;
+      margin-left: auto;
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
       border: none;
       background: transparent;
       color: rgba(152,152,176,0.30);
@@ -605,8 +681,9 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     }
     .send-btn.stopping:hover { color: var(--oc-focus); background: rgba(152,152,176,0.08); }
 
-    /* ── Permission mode button ── */
-    .input-footer { display: flex; align-items: center; padding: 5px 2px 0; }
+    /* ── Input footer (permission mode selector) ── */
+    .input-footer { display: flex; align-items: center; padding: 5px 4px 0; }
+
     .perm-wrap { position: relative; }
     .perm-btn {
       display: flex; align-items: center; gap: 4px;
@@ -790,9 +867,13 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   </div>
 
   <div class="input-area">
-    <div class="input-wrap">
-      <textarea id="chatInput" placeholder="Descreva para a Neve..." rows="2"></textarea>
-      <button class="send-btn" id="sendBtn" title="Enviar mensagem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+    <div class="input-box">
+      <div class="file-chips-row" id="fileChipsRow"></div>
+      <textarea id="chatInput" placeholder="Descreva para a Neve..." rows="1"></textarea>
+      <div class="input-box-bar">
+        <button class="attach-btn" id="attachBtn" title="Anexar arquivo">+</button>
+        <button class="send-btn" id="sendBtn" title="Enviar mensagem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+      </div>
     </div>
     <div class="input-footer">
       <div class="perm-wrap" id="permWrap">
@@ -832,6 +913,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   const inputEl = document.getElementById('chatInput');
   const sendBtn = document.getElementById('sendBtn');
   const abortBtn = document.getElementById('abortBtn');
+  const attachBtn = document.getElementById('attachBtn');
+  const fileChipsRow = document.getElementById('fileChipsRow');
   const newChatBtn = document.getElementById('newChatBtn');
   const historyBtn = document.getElementById('historyBtn');
   const statusDot = document.getElementById('statusDot');
@@ -1398,13 +1481,59 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
   let _chatTitle = '';
 
+  /* ── File attachment state ── */
+  // Array of { name, path, content }
+  let _attachedFiles = [];
+
+  function _renderChips() {
+    if (!fileChipsRow) return;
+    fileChipsRow.innerHTML = '';
+    if (_attachedFiles.length === 0) {
+      fileChipsRow.classList.remove('has-chips');
+      return;
+    }
+    fileChipsRow.classList.add('has-chips');
+    _attachedFiles.forEach((f, idx) => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.title = f.path;
+      const safeName = f.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      chip.innerHTML =
+        '<span class="file-chip-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>' +
+        '<span class="file-chip-name">' + safeName + '</span>' +
+        '<span class="file-chip-remove" title="Remover arquivo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+      chip.querySelector('.file-chip-remove').addEventListener('click', () => {
+        _attachedFiles.splice(idx, 1);
+        _renderChips();
+      });
+      fileChipsRow.appendChild(chip);
+    });
+  }
+
+  if (attachBtn) {
+    attachBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'pick_file' });
+    });
+  }
+
   /* ── Input handling ── */
   function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || isStreaming) return;
     if (!_chatTitle) setChatTitle(text);
+
+    let fullText = text;
+    if (_attachedFiles.length > 0) {
+      const attachments = _attachedFiles.map(f =>
+        '\\n\\n[Arquivo: ' + f.name + ' | ' + f.path + ']\\n' + f.content
+      ).join('\\n\\n');
+      fullText = text + '\\n\\n' + attachments;
+      _attachedFiles = [];
+      _renderChips();
+    }
+
     appendUserMessage(text);
-    vscode.postMessage({ type: 'send_message', text });
+    vscode.postMessage({ type: 'send_message', text: fullText });
     inputEl.value = '';
     autoResizeInput();
     setStreaming(true);
@@ -1639,6 +1768,12 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
           }
         }
         scrollToBottom();
+        break;
+
+      case 'file_picked':
+        _attachedFiles.push({ name: msg.name, path: msg.path, content: msg.content || '' });
+        _renderChips();
+        inputEl.focus();
         break;
 
       case 'process_ready':

@@ -560,6 +560,31 @@ class NeveCodeChatViewProvider {
             await vscode.workspace.getConfiguration('nevecode').update('permissionMode', msg.mode, vscode.ConfigurationTarget.Global);
           }
           break;
+        case 'pick_file': {
+          const folders = vscode.workspace.workspaceFolders;
+          const uris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: 'Anexar ao chat',
+            filters: { 'Todos os arquivos': ['*'] },
+            defaultUri: folders && folders.length > 0 ? folders[0].uri : undefined,
+          });
+          if (uris && uris[0]) {
+            const uri = uris[0];
+            let content = '';
+            try {
+              const bytes = await vscode.workspace.fs.readFile(uri);
+              content = Buffer.from(bytes).toString('utf8');
+              if (content.length > 20000) content = content.slice(0, 20000) + '\n... (truncado)';
+            } catch {}
+            webview.postMessage({
+              type: 'file_picked',
+              name: uri.path.split('/').pop() || uri.fsPath.split(/[\\/]/).pop(),
+              path: uri.fsPath,
+              content,
+            });
+          }
+          break;
+        }
         case 'webview_ready':
           webview.postMessage({ type: 'init_config', permissionMode: vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'acceptEdits') });
           break;
@@ -689,6 +714,31 @@ class NeveCodeChatPanelManager {
             await vscode.workspace.getConfiguration('nevecode').update('permissionMode', msg.mode, vscode.ConfigurationTarget.Global);
           }
           break;
+        case 'pick_file': {
+          const folders = vscode.workspace.workspaceFolders;
+          const uris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: 'Anexar ao chat',
+            filters: { 'Todos os arquivos': ['*'] },
+            defaultUri: folders && folders.length > 0 ? folders[0].uri : undefined,
+          });
+          if (uris && uris[0]) {
+            const uri = uris[0];
+            let content = '';
+            try {
+              const bytes = await vscode.workspace.fs.readFile(uri);
+              content = Buffer.from(bytes).toString('utf8');
+              if (content.length > 20000) content = content.slice(0, 20000) + '\n... (truncado)';
+            } catch {}
+            webview.postMessage({
+              type: 'file_picked',
+              name: uri.path.split('/').pop() || uri.fsPath.split(/[\\/]/).pop(),
+              path: uri.fsPath,
+              content,
+            });
+          }
+          break;
+        }
         case 'webview_ready':
           webview.postMessage({ type: 'init_config', permissionMode: vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'acceptEdits') });
           break;
