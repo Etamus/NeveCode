@@ -136,7 +136,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .md-content p:last-child { margin-bottom: 0; }
     .md-content ul, .md-content ol { padding-left: 20px; margin: 0 0 8px; }
     .md-content li { margin-bottom: 2px; line-height: 1.55; }
-    .md-content h1, .md-content h2, .md-content h3, .md-content h4 { color: var(--vscode-foreground); font-weight: 700; margin: 8px 0 4px; line-height: 1.3; }
+    .md-content h1, .md-content h2, .md-content h3, .md-content h4 { color: var(--vscode-foreground); font-weight: 700; margin: 4px 0 3px; line-height: 1.3; }
     .md-content h1 { font-size: 17px; } .md-content h2 { font-size: 14px; } .md-content h3, .md-content h4 { font-size: 13px; }
     .md-content h1:first-child, .md-content h2:first-child, .md-content h3:first-child { margin-top: 0; }
     .md-content a { color: var(--vscode-textLink-foreground); text-decoration: none; }
@@ -456,7 +456,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .session-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-descriptionForeground)); padding: 10px 6px 4px; }
     .session-item { position: relative; padding: 7px 32px 7px 8px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; }
     .session-item:hover { background: var(--vscode-list-hoverBackground); }
-    .session-item-title { font-size: 12px; font-weight: 500; color: var(--vscode-foreground); margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-item-title { font-size: 13px; font-weight: 500; color: var(--vscode-foreground); margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .session-item-preview { font-size: 11px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .session-item-time { font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.55; }
     .session-delete-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 4px; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 120ms, background 120ms; }
@@ -723,6 +723,9 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     html = html.replace(/\\*\\*([^*]+?)\\*\\*/g, '<strong>$1</strong>');
     html = html.replace(/\\*([^*]+?)\\*/g, '<em>$1</em>');
 
+    // Step 8.5: bold-only lines (whole line = <strong>...</strong>) become implicit h4
+    html = html.replace(/^(<strong>[^<]+<\\/strong>)$/gm, '<h4>$1</h4>');
+
     // Step 9: links
     html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" title="$2">$1</a>');
 
@@ -733,10 +736,10 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     html = html.replace(/^[ \\t]*\\d+\\. (.+)$/gm, '<li class="ol-item">$1</li>');
     // Wrap consecutive ul items — strip \\n between <li> so Step 12 won't inject <br/> between items
     html = html.replace(/((?:<li class="ul-item">.*<\\/li>\\n?)+)/g, (m) =>
-      '<ul>' + m.replace(/ class="ul-item"/g, '').replace(/\\n/g, '') + '</ul>');
+      '<ul>' + m.replace(/ class="ul-item"/g, '').replace(/\\n/g, '') + '</ul>\\n\\n');
     // Wrap consecutive ol items
     html = html.replace(/((?:<li class="ol-item">.*<\\/li>\\n?)+)/g, (m) =>
-      '<ol>' + m.replace(/ class="ol-item"/g, '').replace(/\\n/g, '') + '</ol>');
+      '<ol>' + m.replace(/ class="ol-item"/g, '').replace(/\\n/g, '') + '</ol>\\n\\n');
 
     // Step 11: paragraphs from double newlines
     html = html.replace(/\\n\\n+/g, '</p><p>');
