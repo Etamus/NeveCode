@@ -100,6 +100,14 @@ if !ERRORLEVEL! NEQ 0 (
 echo  Compilacao concluida.
 echo.
 
+echo  Instalando dependencias Python (httpx para llamacpp_provider)...
+python -m pip install httpx --quiet 2>nul
+if !ERRORLEVEL! NEQ 0 (
+    echo  AVISO: pip nao disponivel ou httpx falhou - verifique se Python esta no PATH.
+    echo  Execute manualmente: pip install httpx
+)
+echo.
+
 :: ──────────────────────────────────────────────────────────────────────────────
 :: [4/6] Instalar llama.cpp (baixar se nao existir)
 :: ──────────────────────────────────────────────────────────────────────────────
@@ -115,7 +123,7 @@ if exist "%SERVER_EXE%" (
         "    try { $s = & nvidia-smi 2>&1 | Select-String 'CUDA Version: (\d+\.\d+)'; if ($s) { return ($s.Matches[0].Groups[1].Value) } } catch {}" ^
         "    return $null" ^
         "}" ^
-        "function Resolve-CudaTag([string]$v) { switch (($v -split '\.')[0]) { '12' { 'cu12.4.0' } '11' { 'cu11.8.0' } default { $null } } }" ^
+        "function Resolve-CudaTag([string]$v) { switch (($v -split '\.')[0]) { '13' { 'cu12.4.0' } '12' { 'cu12.4.0' } '11' { 'cu11.8.0' } default { $null } } }" ^
         "$cudaVer = Get-CudaVersion;" ^
         "if ($cudaVer) { Write-Host \"CUDA $cudaVer detectado.\"; $cudaTag = Resolve-CudaTag $cudaVer } else { Write-Host 'CUDA nao encontrado, usando Vulkan.'; $cudaTag = $null };" ^
         "$rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/ggml-org/llama.cpp/releases/latest' -Headers @{'User-Agent'='nevecode-installer'};" ^

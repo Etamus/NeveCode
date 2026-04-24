@@ -26,796 +26,443 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${cspSource || ''} data: blob:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    :root {
-      --oc-bg: #0e0e10;
-      --oc-panel: #141416;
-      --oc-panel-strong: #1a1a1e;
-      --oc-panel-soft: #1f1f24;
-      --oc-border: #38383f;
-      --oc-border-soft: rgba(200,200,210,0.14);
-      --oc-text: #f0f0f5;
-      --oc-text-dim: #b8b8c8;
-      --oc-text-soft: #787888;
-      --oc-accent: #9898b0;
-      --oc-accent-bright: #c0c0d8;
-      --oc-accent-soft: rgba(192,192,216,0.18);
-      --oc-positive: #6abf8a;
-      --oc-warning: #d4a84b;
-      --oc-critical: #d46060;
-      --oc-focus: #dcdcf0;
-      --oc-user-bg: rgba(152,152,176,0.10);
-      --oc-user-border: rgba(152,152,176,0.26);
-      --oc-assistant-bg: rgba(255,255,255,0.025);
-      --oc-assistant-border: rgba(200,200,210,0.09);
-      --oc-code-bg: #18181c;
-      --oc-code-border: rgba(200,200,210,0.11);
-      --oc-tool-bg: rgba(255,255,255,0.018);
-      --oc-tool-border: rgba(200,200,210,0.09);
-      --oc-perm-bg: rgba(192,192,216,0.07);
-      --oc-perm-border: rgba(192,192,216,0.30);
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
+
     body {
-      font-family: "Segoe UI", var(--vscode-font-family, system-ui, sans-serif);
-      font-size: 13px;
-      color: var(--oc-text);
-      background: var(--oc-bg);
+      font-family: var(--vscode-font-family, -apple-system, "Segoe UI", system-ui, sans-serif);
+      font-size: var(--vscode-font-size, 13px);
+      color: var(--vscode-foreground);
+      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
       display: flex;
       flex-direction: column;
-      position: relative;
+      height: 100vh;
+      overflow: hidden;
     }
+
+    /* ── Scrollbars ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121,121,121,0.7)); }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    * { scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)) transparent; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
 
     /* ── Header ── */
     .chat-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--oc-border-soft);
-      background: var(--oc-panel);
-      flex-shrink: 0;
+      display: flex; align-items: center; gap: 2px;
+      padding: 4px 6px 4px 10px;
+      border-bottom: 1px solid var(--vscode-panel-border, transparent);
+      flex-shrink: 0; min-height: 35px;
     }
     .chat-header .brand {
-      font-family: "Segoe UI", system-ui, sans-serif;
-      font-weight: 400;
-      font-size: 14px;
-      color: var(--oc-text-dim);
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      margin-right: 8px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+      color: var(--vscode-foreground); opacity: 0.6;
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      text-transform: uppercase;
     }
     .chat-header .brand.brand-hidden { visibility: hidden; }
-    .chat-header .brand-accent { color: var(--oc-accent-bright); }
     .header-btn {
-      border: none;
-      border-radius: 6px;
-      background: transparent;
-      color: var(--oc-text-dim);
-      padding: 4px 6px;
-      font-size: 12px;
-      cursor: pointer;
-      white-space: nowrap;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 4px; border: none;
+      background: transparent; color: var(--vscode-icon-foreground, var(--vscode-foreground));
+      cursor: pointer; opacity: 0.6; transition: opacity 100ms, background 100ms;
+      flex-shrink: 0; padding: 0;
     }
-    .header-btn:hover { color: var(--oc-text); background: rgba(255,255,255,0.06); border-radius: 6px; }
-    .header-btn.danger { color: var(--oc-critical); }
-    .header-btn.danger:hover { background: rgba(255,138,108,0.12); }
+    .header-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+    .header-btn.danger { color: var(--vscode-errorForeground); }
     #abortBtn { display: none; }
+    button:focus { outline: none; }
+    button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
 
-    /* ── Status bar ── */
-    .status-bar { display: none; }
-    .status-text { display: none; }
-    .status-usage { display: none; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    /* ── Status bar hidden ── */
+    .status-bar, .status-text, .status-usage { display: none; }
 
     /* ── Message list ── */
     .messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .messages { scrollbar-color: #4a4860 transparent; scrollbar-width: thin; }
-    .messages::-webkit-scrollbar { width: 5px; }
-    .messages::-webkit-scrollbar-track { display: none; background: transparent; }
-    .messages::-webkit-scrollbar-track-piece { display: none; background: transparent; }
-    .messages::-webkit-scrollbar-corner { display: none; background: transparent; }
-    .messages::-webkit-scrollbar-thumb { background: #4a4860; border-radius: 3px; min-height: 32px; }
-    .messages::-webkit-scrollbar-button,
-    .messages::-webkit-scrollbar-button:vertical:start:decrement,
-    .messages::-webkit-scrollbar-button:vertical:start:increment,
-    .messages::-webkit-scrollbar-button:vertical:end:decrement,
-    .messages::-webkit-scrollbar-button:vertical:end:increment,
-    .messages::-webkit-scrollbar-button:start,
-    .messages::-webkit-scrollbar-button:end,
-    .messages::-webkit-scrollbar-button:vertical {
-      display: none !important;
-      height: 0 !important;
-      width: 0 !important;
-      background: transparent !important;
-      -webkit-appearance: none !important;
-      opacity: 0 !important;
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      display: flex; flex-direction: column;
     }
 
-    /* ── Welcome screen ── */
+    /* ── Welcome ── */
     .welcome {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      flex: 1;
-      text-align: center;
-      padding: 32px 16px;
-      gap: 16px;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; flex: 1; min-height: 260px;
+      text-align: center; padding: 32px 24px 16px; gap: 0;
     }
-    .welcome-logo { display: flex; align-items: center; justify-content: center; color: var(--oc-text-dim); margin-bottom: 4px; line-height: 1; gap: 14px; margin-right: 24px; }
-    .welcome-logo svg { display: block; max-width: 100%; }
-    .welcome-logo-img { width: 52px; height: 52px; object-fit: contain; display: block; }
-    .welcome-logo-text { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 26px; font-weight: 700; letter-spacing: 1px; color: var(--oc-text-dim); margin-left: -2px; margin-top: -3px; }
-    .welcome-title { font-size: 20px; font-weight: 700; color: var(--oc-text); }
-    .welcome-title .accent { color: var(--oc-accent-bright); }
-    .welcome-sub { font-size: 13px; color: var(--oc-text-dim); max-width: 36ch; }
-    .welcome-hint { font-size: 11px; color: var(--oc-text-soft); }
+    .welcome-logo {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-bottom: 14px; margin-left: -14px;
+      color: var(--vscode-foreground); opacity: 0.9;
+    }
+    .welcome-logo svg { display: block; }
+    .welcome-logo-img { width: 36px; height: 36px; object-fit: contain; }
+    .welcome-logo-text { font-size: 20px; font-weight: 600; color: var(--vscode-foreground); }
+    .welcome-sub { font-size: 12px; color: var(--vscode-descriptionForeground); max-width: 36ch; line-height: 1.6; margin-bottom: 12px; }
+    .welcome-hint { font-size: 11px; color: var(--vscode-descriptionForeground); opacity: 0.55; }
     .welcome-hint kbd {
-      padding: 2px 6px;
-      border-radius: 4px;
-      border: 1px solid var(--oc-border-soft);
-      background: rgba(255,255,255,0.04);
-      font-family: inherit;
-      font-size: 11px;
+      display: inline-block; padding: 1px 5px; border-radius: 3px;
+      border: 1px solid var(--vscode-keybindingLabel-border, rgba(128,128,128,0.4));
+      background: var(--vscode-keybindingLabel-background, rgba(128,128,128,0.10));
+      color: var(--vscode-keybindingLabel-foreground, var(--vscode-foreground));
+      font-family: inherit; font-size: 10px;
     }
 
-    /* ── User message ── */
+    /* ── User message bubble ── */
     .msg-user {
-      align-self: flex-end;
-      max-width: 85%;
-      padding: 10px 14px;
-      border-radius: 14px 14px 4px 14px;
-      background: var(--oc-user-bg);
-      border: 1px solid var(--oc-user-border);
-      word-break: break-word;
-      white-space: pre-wrap;
+      align-self: flex-end; max-width: 88%;
+      padding: 8px 12px; margin: 10px 12px 0;
+      border-radius: 18px 18px 4px 18px;
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border, transparent);
+      color: var(--vscode-foreground);
+      word-break: break-word; white-space: pre-wrap;
+      font-size: 13px; line-height: 1.55;
     }
+    .msg-user:last-child { margin-bottom: 10px; }
 
-    /* ── Assistant message — sem balão, só texto solto ── */
-    .msg-assistant {
-      align-self: flex-start;
-      max-width: 95%;
-      padding: 4px 8px 6px;
-      background: transparent;
-      border: none;
-      word-break: break-word;
-    }
-    .msg-assistant .md-content { line-height: 1.5; }
-    .msg-assistant .md-content:empty { display: none; }
-    .msg-assistant .md-content p { margin: 0 0 5px; }
-    .msg-assistant .md-content p:last-child { margin-bottom: 0; }
-    .msg-assistant .md-content ul,
-    .msg-assistant .md-content ol { padding-left: 22px; margin: 0 0 5px; }
-    .msg-assistant .md-content li { margin-bottom: 2px; }
-    .msg-assistant .md-content h1,
-    .msg-assistant .md-content h2,
-    .msg-assistant .md-content h3 {
-      color: var(--oc-text);
-      margin: 8px 0 3px;
-      font-size: 14px;
-      font-weight: 700;
-    }
-    .msg-assistant .md-content h1 { font-size: 16px; }
-    .msg-assistant .md-content a { color: var(--oc-accent-bright); text-decoration: underline; }
-    .msg-assistant .md-content strong { color: var(--oc-text); font-weight: 700; }
-    .msg-assistant .md-content em { font-style: italic; color: var(--oc-text-dim); }
-    .msg-assistant .md-content blockquote {
-      border-left: 3px solid var(--oc-accent);
-      padding: 3px 10px;
-      margin: 5px 0;
-      color: var(--oc-text-dim);
-    }
-    .msg-assistant .md-content hr {
-      border: none;
-      border-top: 1px solid var(--oc-border-soft);
-      margin: 8px 0;
-    }
-    .msg-assistant .md-content table {
-      border-collapse: collapse;
-      width: 100%;
-      margin: 6px 0;
-      font-size: 13px;
-    }
-    .msg-assistant .md-content th,
-    .msg-assistant .md-content td {
-      border: 1px solid var(--oc-border);
-      padding: 5px 10px;
-      text-align: left;
-    }
-    .msg-assistant .md-content th {
-      background: var(--oc-panel-strong);
-      font-weight: 700;
-      color: var(--oc-text);
-    }
-    .msg-assistant .md-content tr:nth-child(even) td {
-      background: var(--oc-panel-soft);
-    }
+    /* ── Assistant response: no bubble, flush to left ── */
+    .msg-assistant { padding: 10px 16px 2px; min-width: 0; width: 100%; }
+    .msg-assistant:last-child { padding-bottom: 12px; }
 
-    /* inline code */
+    /* ── Markdown ── */
+    .md-content { font-size: 13px; line-height: 1.65; color: var(--vscode-foreground); min-width: 0; overflow-wrap: break-word; word-break: break-word; }
+    .md-content:empty { display: none; }
+    .md-content p { margin: 0 0 8px; line-height: 1.65; }
+    .md-content p:last-child { margin-bottom: 0; }
+    .md-content ul, .md-content ol { padding-left: 20px; margin: 0 0 8px; }
+    .md-content li { margin-bottom: 2px; line-height: 1.55; }
+    .md-content h1, .md-content h2, .md-content h3, .md-content h4 { color: var(--vscode-foreground); font-weight: 700; margin: 8px 0 4px; line-height: 1.3; }
+    .md-content h1 { font-size: 17px; } .md-content h2 { font-size: 14px; } .md-content h3, .md-content h4 { font-size: 13px; }
+    .md-content h1:first-child, .md-content h2:first-child, .md-content h3:first-child { margin-top: 0; }
+    .md-content a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+    .md-content a:hover { text-decoration: underline; }
+    .md-content strong { font-weight: 700; } .md-content em { font-style: italic; }
+    .md-content blockquote { border-left: 3px solid var(--vscode-textBlockQuote-border, var(--vscode-focusBorder)); padding: 3px 12px; margin: 6px 0; color: var(--vscode-descriptionForeground); background: var(--vscode-textBlockQuote-background, transparent); }
+    .md-content hr { border: none; border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); margin: 10px 0; }
+    .md-content table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 12px; }
+    .md-content th, .md-content td { border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); padding: 4px 10px; text-align: left; }
+    .md-content th { background: var(--vscode-editorGroupHeader-tabsBackground); font-weight: 600; }
+    .md-content tr:nth-child(even) td { background: var(--vscode-list-hoverBackground); }
+
+    /* ── Inline code ── */
     .md-content code:not(.code-block code) {
-      padding: 1px 5px;
-      border-radius: 4px;
-      background: var(--oc-code-bg);
-      border: 1px solid var(--oc-code-border);
-      font-family: var(--vscode-editor-font-family, Consolas, monospace);
-      font-size: 12px;
-      color: var(--oc-accent-bright);
+      font-family: var(--vscode-editor-font-family, Consolas, "Courier New", monospace);
+      font-size: 12px; padding: 1px 4px; border-radius: 3px;
+      background: var(--vscode-textCodeBlock-background); color: var(--vscode-foreground);
     }
 
-    /* fenced code */
+    /* ── Fenced code block — identical to Copilot Chat ── */
     .code-wrapper {
-      position: relative;
-      margin: 2px 0;
-      border-radius: 8px;
-      border: 1px solid var(--oc-code-border);
-      background: var(--oc-code-bg);
+      position: relative; margin: 6px 0;
+      border-radius: 6px;
+      background: var(--vscode-textCodeBlock-background);
       overflow: hidden;
+      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, transparent));
     }
     .code-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 4px 10px;
-      font-size: 11px;
-      color: var(--oc-text-soft);
-      border-bottom: 1px solid var(--oc-code-border);
-      background: rgba(255,255,255,0.02);
-    }
-    .code-copy-btn {
-      border: none;
-      background: transparent;
-      color: var(--oc-text-soft);
-      cursor: pointer;
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-    .code-copy-btn:hover { background: rgba(255,255,255,0.08); color: var(--oc-text); }
-    .code-block {
-      display: block;
-      padding: 10px 12px;
-      overflow-x: auto;
-      font-family: var(--vscode-editor-font-family, Consolas, monospace);
-      font-size: 12px;
-      line-height: 1.5;
-      white-space: pre;
-      color: var(--oc-text-dim);
-    }
-    .code-block::-webkit-scrollbar { height: 4px; }
-    .code-block::-webkit-scrollbar-thumb { background: rgba(220,195,170,0.2); border-radius: 2px; }
-
-    /* keyword highlighting */
-    .hl-keyword { color: #c586c0; }
-    .hl-string { color: #ce9178; }
-    .hl-comment { color: #6a9955; font-style: italic; }
-    .hl-number { color: #b5cea8; }
-    .hl-func { color: #dcdcaa; }
-    .hl-type { color: #4ec9b0; }
-
-    /* ── Tool use card ── */
-    .tool-card {
-      margin: 3px 0;
-      border-radius: 8px;
-      border: 1px solid var(--oc-tool-border);
-      background: var(--oc-tool-bg);
-      overflow: hidden;
-    }
-    .tool-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 10px 4px 14px;
+      background: var(--vscode-editorGroupHeader-tabsBackground, transparent);
+      border-bottom: 1px solid var(--vscode-editorWidget-border, transparent);
       user-select: none;
     }
-    .tool-icon { font-size: 14px; flex-shrink: 0; display: none; }
-    .tool-name { font-weight: 600; font-size: 12px; color: var(--oc-text); flex: 1; }
-    .tool-status { font-size: 11px; color: var(--oc-text-soft); flex-shrink: 0; }
-    .tool-status.running { color: var(--oc-text-dim); }
-    .tool-status.error { color: var(--oc-critical); }
-    .tool-status.complete { color: var(--oc-text-soft); }
-    .tool-chevron {
-      width: 14px;
-      height: 14px;
-      color: var(--oc-text-soft);
-      flex-shrink: 0;
-      transition: transform 150ms;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .code-lang { font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: 11px; color: var(--vscode-descriptionForeground); opacity: 0.8; }
+    .code-copy-btn {
+      display: flex; align-items: center; gap: 4px; border: none; background: transparent;
+      color: var(--vscode-descriptionForeground); cursor: pointer;
+      font-family: var(--vscode-font-family, "Segoe UI"); font-size: 11px;
+      padding: 2px 6px; border-radius: 3px; transition: color 100ms, background 100ms;
     }
+    .code-copy-btn:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+    .code-block {
+      display: block; padding: 12px 16px; overflow-x: auto;
+      font-family: var(--vscode-editor-font-family, Consolas, "Courier New", monospace);
+      font-size: var(--vscode-editor-font-size, 12px); line-height: 1.6; white-space: pre;
+      color: var(--vscode-editor-foreground, var(--vscode-foreground)); tab-size: 2;
+    }
+    .hl-keyword { color: #569cd6; } .hl-string { color: #ce9178; }
+    .hl-comment { color: #6a9955; font-style: italic; } .hl-number { color: #b5cea8; }
+    .hl-func { color: #dcdcaa; } .hl-type { color: #4ec9b0; }
+
+    /* ── Tool card (Copilot "Working" style) ── */
+    .tool-card {
+      margin: 3px 0; border-radius: 5px; overflow: hidden;
+      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, transparent));
+      background: transparent;
+    }
+    .tool-header {
+      display: flex; align-items: center; gap: 7px;
+      padding: 5px 10px; cursor: pointer; user-select: none; min-height: 28px;
+      border-radius: 5px; transition: background 80ms;
+    }
+    .tool-header:hover { background: var(--vscode-list-hoverBackground); }
+    .tool-icon { display: flex; align-items: center; color: var(--vscode-descriptionForeground); flex-shrink: 0; opacity: 0.8; }
+    .tool-name { font-size: 12px; color: var(--vscode-foreground); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tool-path { font-size: 11px; color: var(--vscode-descriptionForeground); margin-left: 3px; font-weight: 400; }
+    .tool-status { font-size: 11px; color: var(--vscode-descriptionForeground); flex-shrink: 0; display: flex; align-items: center; gap: 3px; }
+    .tool-status.error { color: var(--vscode-errorForeground); }
+    .tool-running-spinner {
+      display: inline-block; width: 11px; height: 11px;
+      border: 1.5px solid rgba(128,128,128,0.25);
+      border-top-color: var(--vscode-descriptionForeground);
+      border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0;
+    }
+    .tool-chevron { color: var(--vscode-descriptionForeground); flex-shrink: 0; display: flex; align-items: center; transition: transform 150ms; opacity: 0.5; }
     .tool-card.no-output .tool-chevron { visibility: hidden; }
     .tool-card.no-output .tool-header { cursor: default; }
     .tool-card.expanded .tool-chevron { transform: rotate(180deg); }
-    .tool-body {
-      display: none;
-      padding: 0 10px 10px;
-      font-size: 12px;
-      border-top: 1px solid var(--oc-tool-border);
-    }
+    .tool-body { display: none; padding: 0 12px 10px; border-top: 1px solid var(--vscode-editorWidget-border, transparent); }
     .tool-card.expanded .tool-body { display: block; }
-    .tool-input-label,
-    .tool-output-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--oc-text-soft);
-      margin: 8px 0 4px;
+    .tool-input-label, .tool-output-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--vscode-descriptionForeground); opacity: 0.65; margin: 8px 0 4px;
     }
-    .tool-input-content,
-    .tool-output-content {
-      padding: 6px 8px;
-      border-radius: 6px;
-      background: rgba(0,0,0,0.2);
+    .tool-input-content, .tool-output-content {
+      padding: 6px 8px; border-radius: 4px;
+      background: var(--vscode-textCodeBlock-background);
+      border: 1px solid var(--vscode-editorWidget-border, transparent);
       font-family: var(--vscode-editor-font-family, Consolas, monospace);
-      font-size: 11px;
-      color: var(--oc-text-dim);
-      white-space: pre-wrap;
-      word-break: break-all;
-      max-height: 200px;
-      overflow-y: auto;
+      font-size: 11px; color: var(--vscode-editor-foreground, var(--vscode-foreground));
+      white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto;
     }
-    .tool-output-content.error { color: var(--oc-critical); }
-    .tool-path {
-      font-weight: 400;
-      color: var(--oc-text-soft);
-      font-size: 11px;
-      margin-left: 4px;
-    }
-    .file-link {
-      color: var(--oc-accent-bright);
-      cursor: pointer;
-      text-decoration: none;
-      border-bottom: 1px dotted var(--oc-accent);
-      transition: color 120ms, border-color 120ms;
-    }
-    .file-link:hover {
-      color: var(--oc-focus);
-      border-bottom-color: var(--oc-focus);
-    }
-    .tool-input-content.tool-diff-old {
-      border-left: 3px solid var(--oc-critical);
-      padding-left: 10px;
-      color: #c0c0d8;
-      text-decoration: line-through;
-      opacity: 0.7;
-    }
-    .tool-input-content.tool-diff-new {
-      border-left: 3px solid var(--oc-positive);
-      padding-left: 10px;
-      color: #c8e6a0;
-    }
-    .tool-diff-btn {
-      margin-top: 6px;
-      border: 1px solid var(--oc-accent);
-      border-radius: 6px;
-      background: rgba(240,148,100,0.08);
-      color: var(--oc-accent-bright);
-      padding: 4px 10px;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    .tool-diff-btn:hover { background: rgba(240,148,100,0.16); }
+    .tool-output-content.error { color: var(--vscode-errorForeground); }
+    .tool-input-content.tool-diff-old { border-left: 3px solid var(--vscode-errorForeground); padding-left: 8px; opacity: 0.75; text-decoration: line-through; }
+    .tool-input-content.tool-diff-new { border-left: 3px solid var(--vscode-gitDecoration-addedResourceForeground, #89d185); padding-left: 8px; }
+
+    /* ── File link ── */
+    .file-link { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: none; }
+    .file-link:hover { text-decoration: underline; }
 
     /* ── Permission card ── */
-    .perm-card {
-      margin: 8px 0;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid var(--oc-perm-border);
-      background: var(--oc-perm-bg);
-    }
-    .perm-title { font-weight: 700; font-size: 12px; color: var(--oc-critical); margin-bottom: 6px; }
-    .perm-desc { font-size: 12px; color: var(--oc-text-dim); margin-bottom: 8px; }
-    .perm-input {
-      padding: 6px 8px;
-      margin-bottom: 8px;
-      border-radius: 6px;
-      background: rgba(0,0,0,0.2);
-      font-family: var(--vscode-editor-font-family, Consolas, monospace);
-      font-size: 11px;
-      color: var(--oc-text-dim);
-      white-space: pre-wrap;
-      max-height: 120px;
-      overflow-y: auto;
-    }
-    .perm-actions { display: flex; gap: 6px; }
-    .perm-btn {
-      padding: 5px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      border: 1px solid;
-    }
-    .perm-btn.allow {
-      background: rgba(232,184,107,0.14);
-      border-color: var(--oc-positive);
-      color: var(--oc-positive);
-    }
-    .perm-btn.deny {
-      background: rgba(255,138,108,0.1);
-      border-color: var(--oc-critical);
-      color: var(--oc-critical);
-    }
-    .perm-btn.allow-session {
-      background: rgba(232,184,107,0.08);
-      border-color: rgba(232,184,107,0.4);
-      color: var(--oc-text-dim);
-    }
-    .perm-btn:hover { filter: brightness(1.15); }
+    .perm-card { margin: 8px 0; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground)); background: var(--vscode-inputValidation-warningBackground, transparent); }
+    .perm-title { font-weight: 600; font-size: 12px; color: var(--vscode-editorWarning-foreground, var(--vscode-foreground)); margin-bottom: 4px; }
+    .perm-desc { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 8px; }
+    .perm-input { padding: 6px 8px; margin-bottom: 8px; border-radius: 4px; background: var(--vscode-textCodeBlock-background); font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: 11px; color: var(--vscode-foreground); white-space: pre-wrap; max-height: 100px; overflow-y: auto; }
+    .perm-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .perm-btn { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid transparent; font-family: inherit; }
+    .perm-btn.allow { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+    .perm-btn.allow:hover { background: var(--vscode-button-hoverBackground); }
+    .perm-btn.deny, .perm-btn.allow-session { background: transparent; color: var(--vscode-foreground); border-color: var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); }
+    .perm-btn.deny:hover, .perm-btn.allow-session:hover { background: var(--vscode-list-hoverBackground); }
 
-    /* ── Status pill ── */
-    .msg-status {
-      align-self: center;
-      font-size: 11px;
-      color: var(--oc-text-soft);
-      padding: 4px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--oc-border-soft);
-      background: rgba(255,255,255,0.02);
-    }
+    /* ── Status / rate limit ── */
+    .msg-status { align-self: center; font-size: 11px; color: var(--vscode-descriptionForeground); padding: 2px 10px; margin: 5px auto; }
+    .msg-rate-limit { margin: 6px 16px; padding: 6px 10px; border-radius: 4px; font-size: 12px; color: var(--vscode-editorWarning-foreground); border: 1px solid var(--vscode-inputValidation-warningBorder); background: var(--vscode-inputValidation-warningBackground); }
 
-    /* ── Rate limit ── */
-    .msg-rate-limit {
-      align-self: center;
-      font-size: 11px;
-      color: var(--oc-warning);
-      padding: 6px 14px;
-      border-radius: 8px;
-      border: 1px solid rgba(243,201,105,0.3);
-      background: rgba(243,201,105,0.06);
-    }
-
-    /* ── Thinking block — sem balão, apenas texto inline ── */
-    .thinking-block {
+    /* ────────────────────────────────────────────────────────────────
+       THINKING BLOCK — collapsible panel with streaming reasoning text
+       (exactly like Copilot Chat "Working" section, but for reasoning)
+       ──────────────────────────────────────────────────────────────── */
+    .th-block {
       display: none;
-      padding: 2px 0 4px;
-      margin: 2px 0;
-      gap: 4px;
-      flex-direction: column;
-      background: transparent;
-      border: none;
-    }
-    .thinking-block.visible { display: flex; }
-    .thinking-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      color: var(--oc-text-soft);
-      font-weight: 500;
-    }
-    .thinking-spinner {
-      width: 12px; height: 12px;
-      border: 2px solid rgba(150,150,170,0.25);
-      border-top-color: var(--oc-text-dim);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .thinking-meta {
-      font-size: 11px;
-      color: var(--oc-text-soft);
-    }
-
-    /* ── Prefill progress bar ── */
-    .prefill-bar {
-      display: none;
-      flex-direction: column;
-      gap: 4px;
-      padding: 2px 0 6px;
-    }
-    .prefill-bar.visible { display: flex; }
-    .prefill-label {
-      font-size: 11px;
-      color: var(--oc-text-soft);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .prefill-label .prefill-spinner {
-      width: 10px; height: 10px;
-      border: 1.5px solid rgba(150,150,170,0.25);
-      border-top-color: var(--oc-text-soft);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    .prefill-label .prefill-elapsed {
-      margin-left: auto;
-      font-size: 10px;
-      color: var(--oc-text-soft);
-      opacity: 0.7;
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* ── Gen indicators wrapper ── */
-    .gen-indicators {
-      flex-shrink: 0;
-      padding: 0 12px 4px;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
+      margin: 2px 16px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, transparent));
       overflow: hidden;
     }
-
-    /* ── Tool running spinner ── */
-    .tool-running-spinner {
-      display: inline-block;
-      width: 11px; height: 11px;
-      border: 1.5px solid rgba(150,150,170,0.25);
-      border-top-color: var(--oc-text-soft);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      vertical-align: middle;
-      margin-right: 4px;
+    .th-block.visible { display: block; }
+    /* header row */
+    .th-header {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 10px;
+      background: var(--vscode-editorGroupHeader-tabsBackground, transparent);
+      cursor: pointer; user-select: none;
     }
+    .th-header:hover { background: var(--vscode-list-hoverBackground); }
+    .th-spinner {
+      width: 12px; height: 12px; flex-shrink: 0;
+      border: 1.5px solid rgba(128,128,128,0.25);
+      border-top-color: var(--vscode-descriptionForeground);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    .th-block.done .th-spinner { display: none; }
+    .th-check {
+      display: none; flex-shrink: 0; opacity: 0.6;
+      color: var(--vscode-descriptionForeground);
+    }
+    .th-block.done .th-check { display: flex; align-items: center; }
+    .th-label {
+      flex: 1; font-size: 12px;
+      color: var(--vscode-descriptionForeground); font-style: italic;
+    }
+    .th-meta { font-size: 11px; color: var(--vscode-descriptionForeground); opacity: 0.55; flex-shrink: 0; }
+    .th-chevron {
+      flex-shrink: 0; display: flex; align-items: center;
+      color: var(--vscode-descriptionForeground); opacity: 0.5;
+      transition: transform 150ms;
+    }
+    .th-block.collapsed .th-chevron { transform: rotate(-90deg); }
+    /* content area */
+    .th-body {
+      border-top: 1px solid var(--vscode-editorWidget-border, transparent);
+      background: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.08));
+      max-height: 160px; overflow-y: auto; overflow-x: hidden;
+      padding: 8px 14px 10px;
+      transition: max-height 200ms ease;
+    }
+    .th-block.collapsed .th-body { display: none; }
+    .th-text {
+      font-family: var(--vscode-editor-font-family, Consolas, monospace);
+      font-size: 11px; line-height: 1.55;
+      color: var(--vscode-descriptionForeground); opacity: 0.85;
+      white-space: pre-wrap; word-break: break-word;
+    }
+
+    /* ── Prefill bar ── */
+    .prefill-bar {
+      display: none; align-items: center; gap: 8px;
+      margin: 0 16px 4px; padding: 4px 0;
+      font-size: 12px; color: var(--vscode-descriptionForeground);
+    }
+    .prefill-bar.visible { display: flex; }
+    .prefill-spinner {
+      width: 11px; height: 11px; flex-shrink: 0;
+      border: 1.5px solid rgba(128,128,128,0.25);
+      border-top-color: var(--vscode-descriptionForeground);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    .prefill-elapsed { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.55; }
+
+    /* ── Gen indicators wrapper (holds thinking + prefill) ── */
+    .gen-indicators { flex-shrink: 0; padding: 0 0 2px; display: flex; flex-direction: column; }
 
     /* ── Input area ── */
     .input-area {
-      padding: 8px 10px 10px;
-      flex-shrink: 0;
+      flex-shrink: 0; padding: 0 8px 8px; display: flex; flex-direction: column;
     }
-    /* Single bordered box — chips + textarea + action bar all inside */
+    .file-chips-row {
+      display: none; flex-wrap: wrap; gap: 4px; padding: 6px 8px 4px;
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-bottom: none; border-radius: 6px 6px 0 0;
+      background: var(--vscode-input-background);
+    }
+    .file-chips-row.has-chips { display: flex; }
+    .file-chip {
+      display: flex; align-items: center; gap: 5px; padding: 4px 10px 4px 8px;
+      border-radius: 4px; border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.25));
+      background: var(--vscode-editorGroupHeader-tabsBackground, rgba(128,128,128,0.1));
+      font-size: 12px; color: var(--vscode-foreground);
+      max-width: 220px; user-select: none;
+    }
+    .file-chip-icon { flex-shrink: 0; opacity: 0.65; }
+    .file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .file-chip-remove {
+      flex-shrink: 0; width: 16px; height: 16px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; cursor: pointer; opacity: 0.45;
+      color: var(--vscode-foreground); transition: opacity 120ms;
+    }
+    .file-chip-remove:hover { opacity: 1; }
+
     .input-box {
-      border: 1px solid var(--oc-border-soft);
-      border-radius: 10px;
-      background: rgba(255,255,255,0.04);
-      display: flex;
-      flex-direction: column;
+      display: flex; flex-direction: column;
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 6px; background: var(--vscode-input-background);
       transition: border-color 120ms;
     }
-    .input-box:focus-within { border-color: var(--oc-accent); }
-
-    /* Chips inside the box */
-    .file-chips-row {
-      display: none;
-      flex-wrap: wrap;
-      gap: 5px;
-      padding: 8px 10px 5px;
-    }
-    .file-chips-row.has-chips { display: flex; border-bottom: 1px solid rgba(255,255,255,0.06); }
-    .file-chip {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 6px 3px 8px;
-      border-radius: 6px;
-      border: 1px solid var(--oc-border-soft);
-      background: rgba(152,152,176,0.10);
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      font-size: 11px;
-      color: var(--oc-text-dim);
-      max-width: 200px;
-      cursor: default;
-      user-select: none;
-    }
-    .file-chip-icon { flex-shrink: 0; opacity: 0.7; }
-    .file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .file-chip-remove {
-      flex-shrink: 0;
-      width: 14px;
-      height: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 3px;
-      cursor: pointer;
-      opacity: 0.55;
-      color: var(--oc-text-soft);
-      transition: opacity 120ms, background 120ms;
-    }
-    .file-chip-remove:hover { opacity: 1; background: rgba(255,255,255,0.1); }
-
-    /* Textarea — no border, transparent (box provides the border) */
+    .file-chips-row.has-chips + .input-box { border-radius: 0 0 6px 6px; border-top: none; }
+    .input-box:focus-within { border-color: var(--vscode-focusBorder); }
     .input-area textarea {
-      width: 100%;
-      min-height: 68px;
-      max-height: 180px;
-      padding: 10px 12px;
-      border: none;
-      border-radius: 0;
-      background: transparent;
-      color: var(--oc-text);
-      font-family: inherit;
-      font-size: 13px;
-      resize: none;
-      outline: none;
-      line-height: 1.4;
-      box-sizing: border-box;
+      width: 100%; min-height: 52px; max-height: 200px;
+      padding: 9px 12px 6px; border: none; border-radius: 6px 6px 0 0;
+      background: transparent; color: var(--vscode-input-foreground, var(--vscode-foreground));
+      font-family: var(--vscode-font-family, "Segoe UI", system-ui); font-size: 13px;
+      resize: none; outline: none; line-height: 1.55;
     }
-    .input-area textarea::placeholder { color: var(--oc-text-soft); }
+    .input-area textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
     .input-area textarea::-webkit-scrollbar { display: none; }
     .input-area textarea { scrollbar-width: none; }
 
-    /* Action bar inside the box: attach btn left, send btn right */
     .input-box-bar {
-      display: flex;
-      align-items: center;
-      padding: 4px 6px;
-      gap: 4px;
+      display: flex; align-items: center; padding: 3px 6px 4px; gap: 2px;
+      border-top: 1px solid var(--vscode-editorWidget-border, transparent);
     }
-
-    /* Attach "+" button */
     .attach-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      border-radius: 5px;
-      border: none;
-      background: transparent;
-      color: var(--oc-text-soft);
-      font-size: 19px;
-      font-weight: 300;
-      line-height: 1;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: color 120ms, background 120ms;
-      padding: 0;
-      user-select: none;
+      display: flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 4px; border: none;
+      background: transparent; color: var(--vscode-icon-foreground, var(--vscode-foreground));
+      font-size: 18px; font-weight: 300; line-height: 1;
+      cursor: pointer; opacity: 0.6; transition: opacity 120ms, background 120ms; padding: 0;
     }
-    .attach-btn:hover { color: var(--oc-text); background: rgba(152,152,176,0.08); }
+    .attach-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
 
-    /* Send / stop button */
+    /* bar buttons — lightweight, text+icon combos */
+    .bar-btn {
+      display: flex; align-items: center; gap: 3px; padding: 2px 6px; height: 22px;
+      border-radius: 4px; border: none; background: transparent;
+      color: var(--vscode-descriptionForeground);
+      font-family: var(--vscode-font-family, "Segoe UI"); font-size: 11px;
+      cursor: pointer; user-select: none; white-space: nowrap;
+      transition: background 120ms, color 120ms; flex-shrink: 0;
+    }
+    .bar-btn:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+    #envBtn:hover, #modelBtn:hover { background: transparent; color: var(--vscode-descriptionForeground); }
+    .bar-btn svg { opacity: 0.70; flex-shrink: 0; }
+    .bar-chevron { opacity: 0.45 !important; }
+    .bar-btn.bar-icon { padding: 2px 4px; }
+
     .send-btn {
-      margin-left: auto;
-      width: 28px;
-      height: 28px;
-      border-radius: 7px;
-      border: none;
-      background: transparent;
-      color: rgba(152,152,176,0.30);
-      cursor: not-allowed;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: color 140ms, background 140ms;
+      margin-left: auto; display: flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 5px; border: none;
+      background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.18));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      cursor: not-allowed; opacity: 0.35;
+      transition: opacity 120ms, background 120ms; flex-shrink: 0; padding: 0;
     }
-    .send-btn:not(:disabled):not(.stopping) {
-      color: var(--oc-accent-bright);
-      cursor: pointer;
-    }
-    .send-btn:not(:disabled):not(.stopping):hover { color: var(--oc-focus); background: rgba(152,152,176,0.08); }
-    .send-btn:disabled { opacity: 1; }
-    .send-btn.stopping {
-      color: var(--oc-accent-bright);
-      cursor: pointer;
-      opacity: 1;
-    }
-    .send-btn.stopping:hover { color: var(--oc-focus); background: rgba(152,152,176,0.08); }
+    .send-btn:not(:disabled):not(.stopping) { opacity: 1; cursor: pointer; }
+    .send-btn:not(:disabled):not(.stopping):hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.28)); }
+    .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .send-btn.stopping { opacity: 1; cursor: pointer; }
+    .send-btn.stopping:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.28)); }
 
-    /* ── Input footer (permission mode selector) ── */
-    .input-footer { display: flex; align-items: center; padding: 5px 4px 0; }
-
+    /* ── Input footer ── */
+    .input-footer { display: flex; align-items: center; padding: 4px 2px 0; gap: 2px; }
     .perm-wrap { position: relative; }
-    .perm-btn {
-      display: flex; align-items: center; gap: 4px;
-      padding: 3px 8px 3px 6px;
-      border-radius: 6px; border: 1px solid transparent;
-      background: transparent;
-      color: var(--oc-text-soft);
-      font-family: 'Segoe UI', system-ui, sans-serif; font-size: 11px;
-      cursor: pointer;
-      transition: color 120ms, background 120ms, border-color 120ms;
-      user-select: none; white-space: nowrap;
-    }
-    .perm-btn:hover { color: var(--oc-text-dim); border-color: var(--oc-border-soft); background: rgba(152,152,176,0.06); }
-    .perm-btn svg { opacity: 0.55; flex-shrink: 0; }
-    .perm-chevron { opacity: 0.4; }
     .perm-dropdown {
-      position: absolute; bottom: calc(100% + 5px); left: 0;
-      background: var(--oc-panel-strong);
-      border: 1px solid var(--oc-border);
-      border-radius: 9px; overflow: hidden; z-index: 200;
-      min-width: 195px;
-      box-shadow: 0 6px 24px rgba(0,0,0,0.55);
-      display: none;
+      position: absolute; bottom: calc(100% + 4px); left: 0;
+      background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+      border: 1px solid var(--vscode-menu-border, var(--vscode-editorWidget-border));
+      border-radius: 6px; overflow: hidden; z-index: 300; min-width: 200px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3); display: none;
     }
     .perm-dropdown.open { display: block; }
-    .perm-option {
-      padding: 9px 14px; cursor: pointer;
-      display: flex; flex-direction: column; gap: 1px;
-      transition: background 100ms;
-      border-bottom: 1px solid var(--oc-border-soft);
-    }
-    .perm-option:last-child { border-bottom: none; }
-    .perm-option:hover { background: rgba(255,255,255,0.05); }
-    .perm-option-label { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px; color: var(--oc-text-dim); font-weight: 500; }
-    .perm-option-desc { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 10px; color: var(--oc-text-soft); }
-    .perm-option.active .perm-option-label { color: var(--oc-accent-bright); }
+    .perm-option { padding: 7px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 1px; transition: background 80ms; }
+    .perm-option:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1)); }
+    .perm-option-label { font-size: 12px; color: var(--vscode-foreground); font-weight: 500; }
+    .perm-option-desc { font-size: 11px; color: var(--vscode-descriptionForeground); }
+    .perm-option.active { background: rgba(128,128,128,0.14); }
+    .perm-option.active .perm-option-label { color: var(--vscode-foreground); font-weight: 700; }
 
-    /* ── Session list overlay ── */
+    /* ── Session overlay ── */
     .session-overlay {
-      display: none;
-      position: absolute;
-      inset: 0;
-      z-index: 100;
-      background: rgba(5,5,5,0.92);
+      display: none; position: absolute; inset: 0; z-index: 200;
+      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
       flex-direction: column;
     }
     .session-overlay.visible { display: flex; }
     .session-overlay-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--oc-border-soft);
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border-bottom: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); flex-shrink: 0;
     }
-    .session-overlay-header h2 { font-size: 14px; font-weight: 400; flex: 1; }
-    .session-search {
-      margin: 8px 12px;
-      padding: 8px 10px;
-      border: 1px solid var(--oc-border-soft);
-      border-radius: 8px;
-      background: rgba(255,255,255,0.04);
-      color: var(--oc-text);
-      font-size: 13px;
-      outline: none;
-    }
-    .session-search:focus { border-color: var(--oc-accent); }
-    .session-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px 12px;
-    }
-    .session-group-label {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      font-size: 12px;
-      letter-spacing: 0.05em;
-      color: var(--oc-text-soft);
-      padding: 8px 0 4px;
-    }
-    .session-item {
-      position: relative;
-      padding: 10px;
-      padding-right: 34px;
-      border-radius: 8px;
-      border: 1px solid transparent;
-      cursor: pointer;
-      margin-bottom: 4px;
-    }
-    .session-item:hover { background: rgba(255,255,255,0.04); border-color: var(--oc-border-soft); }
-    .session-item-title { font-weight: 600; font-size: 13px; color: var(--oc-text); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-item-preview { font-size: 11px; color: var(--oc-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-item-time { font-size: 10px; color: var(--oc-text-soft); margin-top: 2px; }
-    .session-delete-btn {
-      position: absolute;
-      right: 6px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 22px;
-      height: 22px;
-      border-radius: 5px;
-      border: none;
-      background: transparent;
-      color: var(--oc-text-soft);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      transition: opacity 120ms, background 120ms, color 120ms;
-    }
-    .session-item:hover .session-delete-btn { opacity: 1; }
-    .session-delete-btn:hover { background: rgba(150,150,170,0.10); color: var(--oc-text); }
-    .session-empty { text-align: center; padding: 32px; color: var(--oc-text-soft); }
+    .session-overlay-header h2 { font-size: 14px; font-weight: 400; flex: 1; color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground)); opacity: 0.85; }
+    .session-search { margin: 6px 10px; padding: 6px 10px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); font-family: var(--vscode-font-family); font-size: 12px; outline: none; flex-shrink: 0; }
+    .session-search:focus { border-color: var(--vscode-focusBorder); }
+    .session-list { flex: 1; overflow-y: auto; padding: 4px 8px 8px; }
+    .session-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-descriptionForeground)); padding: 10px 6px 4px; }
+    .session-item { position: relative; padding: 7px 32px 7px 8px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; }
+    .session-item:hover { background: var(--vscode-list-hoverBackground); }
+    .session-item-title { font-size: 12px; font-weight: 500; color: var(--vscode-foreground); margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-item-preview { font-size: 11px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-item-time { font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.55; }
+    .session-delete-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 4px; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 120ms, background 120ms; }
+    .session-item:hover .session-delete-btn { opacity: 0.5; }
+    .session-delete-btn:hover { opacity: 1 !important; background: var(--vscode-list-hoverBackground); }
+    .session-empty { text-align: center; padding: 32px; font-size: 12px; color: var(--vscode-descriptionForeground); }
   </style>
 </head>
 <body>
@@ -863,26 +510,30 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
           <text x="107" y="45" font-family="'Segoe UI', system-ui, sans-serif" font-size="30" font-weight="300" letter-spacing="1" fill="currentColor" dominant-baseline="middle">Neve Code</text>
         </svg>`}
       </div>
-      <div class="welcome-sub">Faça uma pergunta, solicite uma alteração no código ou inicie uma nova tarefa.</div>
+      <div class="welcome-sub">Solicite uma alteração no código ou inicie uma nova tarefa.</div>
       <div class="welcome-hint">Pressione <kbd>${escapeHtml(modKey)}+L</kbd> para focar no campo de entrada</div>
     </div>
   </div>
 
   <div class="gen-indicators">
-    <div class="thinking-block" id="thinkingBlock">
-      <div class="thinking-header">
-        <div class="thinking-spinner"></div>
-        <span id="thinkingLabel">Pensando...</span>
+    <!-- Thinking / reasoning block — streams text, then collapses -->
+    <div class="th-block" id="thinkingBlock">
+      <div class="th-header" id="thinkingHeader">
+        <div class="th-spinner"></div>
+        <span class="th-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="th-label" id="thinkingLabel">Pensando...</span>
+        <span class="th-meta" id="thinkingMeta"></span>
+        <span class="th-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
       </div>
-      <div class="thinking-meta" id="thinkingMeta"></div>
+      <div class="th-body" id="thinkingBody">
+        <div class="th-text" id="thinkingText"></div>
+      </div>
     </div>
 
     <div class="prefill-bar" id="prefillBar">
-      <div class="prefill-label">
-        <span class="prefill-spinner"></span>
-        <span id="prefillText">Processando contexto...</span>
-        <span class="prefill-elapsed" id="prefillElapsed">0s</span>
-      </div>
+      <div class="prefill-spinner"></div>
+      <span id="prefillText">Processando contexto...</span>
+      <span class="prefill-elapsed" id="prefillElapsed">0s</span>
     </div>
   </div>
 
@@ -892,15 +543,22 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       <textarea id="chatInput" placeholder="Descreva para a Neve..." rows="1"></textarea>
       <div class="input-box-bar">
         <button class="attach-btn" id="attachBtn" title="Anexar arquivo">+</button>
+        <button class="bar-btn" id="modelBtn" title="Modelo de IA">
+          <span id="modelLabel"></span>
+        </button>
         <button class="send-btn" id="sendBtn" title="Enviar mensagem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
       </div>
     </div>
     <div class="input-footer">
+      <button class="bar-btn" id="envBtn" title="Ambiente de execução">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>Local</span>
+      </button>
       <div class="perm-wrap" id="permWrap">
-        <button class="perm-btn" id="permBtn" title="Modo de permissão">
+        <button class="bar-btn" id="permBtn" title="Modo de aprovações">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span id="permLabel">Aceitar edições</span>
-          <svg class="perm-chevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <span id="permLabel">Aprovações Padrão</span>
+          <svg class="bar-chevron" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="perm-dropdown" id="permDropdown">
           <div class="perm-option" data-mode="default"><span class="perm-option-label">Padrão</span><span class="perm-option-desc">Solicita confirmação para cada operação</span></div>
@@ -916,7 +574,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   <div class="session-overlay" id="sessionOverlay">
     <div class="session-overlay-header">
       <h2>Histórico de sessões</h2>
-      <button class="header-btn" id="closeSessionsBtn">Fechar</button>
+      <button class="header-btn" id="closeSessionsBtn" title="Fechar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
     </div>
     <input class="session-search" id="sessionSearch" type="text" placeholder="Pesquisar sessões..." />
     <div class="session-list" id="sessionList">
@@ -944,6 +602,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   const prefillBar = document.getElementById('prefillBar');
   const prefillText = document.getElementById('prefillText');
   const prefillElapsed = document.getElementById('prefillElapsed');
+  const modelLabel = document.getElementById('modelLabel');
   const sessionOverlay = document.getElementById('sessionOverlay');
   const closeSessionsBtn = document.getElementById('closeSessionsBtn');
   const sessionSearch = document.getElementById('sessionSearch');
@@ -1167,15 +826,14 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   const SEND_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
   const STOP_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3" ry="3"/></svg>';
 
-  function setStreaming(val, label) {
+  function setStreaming(val) {
     isStreaming = val;
-    abortBtn.style.display = 'none';
+    if (abortBtn) abortBtn.style.display = 'none';
     if (val) {
       sendBtn.disabled = false;
       sendBtn.classList.add('stopping');
       sendBtn.title = 'Parar geração';
       sendBtn.innerHTML = STOP_ICON;
-      // mostrar barra de prefill até o primeiro token chegar
       _showPrefill();
     } else {
       sendBtn.classList.remove('stopping');
@@ -1183,10 +841,11 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       sendBtn.innerHTML = SEND_ICON;
       updateSendBtn();
       _hidePrefill();
+      if (thinkingBlock) {
+        thinkingBlock.classList.remove('visible');
+        thinkingBlock.classList.remove('done', 'collapsed');
+      }
     }
-    typingIndicator; // no-op — removido
-    statusDot.className = 'status-dot ' + (val ? 'streaming' : 'connected');
-    statusText.textContent = label || (val ? 'Gerando...' : 'Pronto');
   }
 
   function _showPrefill(label) {
@@ -1210,9 +869,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     prefillBar.classList.remove('visible');
   }
 
-  function setStatusLabel(label) {
-    statusText.textContent = label;
-  }
+  function setStatusLabel(_label) { /* status bar hidden — no-op */ }
 
   function appendUserMessage(text) {
     hideWelcome();
@@ -1222,6 +879,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     messagesEl.appendChild(el);
     scrollToBottom();
   }
+  /* NOTE: msg-user uses align-self:flex-end via CSS; messages container uses flex-direction:column */
 
   function getOrCreateAssistantEl() {
     if (!currentAssistantEl) {
@@ -1235,6 +893,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     }
     return { container: currentAssistantEl, textEl: currentTextEl };
   }
+  /* NOTE: .msg-assistant is full-width block flush to left margin — Copilot style */
 
   function finalizeAssistant() {
     // Hide the text div if it's empty (model went straight to tool use)
@@ -1339,9 +998,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         statusEl.className = 'tool-status ' + (isError ? 'error' : 'complete');
         statusEl.textContent = isError ? 'Erro' : 'Concluído';
       }
-      // Output arrived — enable expand and auto-open the card
+      // Output arrived — enable expand (user can click to open)
       card.classList.remove('no-output');
-      card.classList.add('expanded');
     }
   }
 
@@ -1351,11 +1009,10 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       outputEl.textContent = content || '';
       delete outputEl.dataset.running;
     }
-    // Progress arrived mid-run — enable expand and auto-open
+    // Progress arrived mid-run — enable expand (user can click to open)
     const card = document.querySelector('[data-tool-id="' + toolUseId + '"]');
     if (card && content && content.trim()) {
       card.classList.remove('no-output');
-      card.classList.add('expanded');
     }
   }
 
@@ -1414,7 +1071,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
     body.innerHTML = pathHtml + diffHtml + outputLabel + outputHtml;
     card.classList.remove('no-output');
-    card.classList.add('expanded');
     scrollToBottom();
   }
 
@@ -1467,29 +1123,49 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
   /* ── Thinking block ── */
   const thinkingBlock = document.getElementById('thinkingBlock');
+  const thinkingHeader = document.getElementById('thinkingHeader');
   const thinkingLabel = document.getElementById('thinkingLabel');
   const thinkingMeta = document.getElementById('thinkingMeta');
+  const thinkingBody = document.getElementById('thinkingBody');
+  const thinkingText = document.getElementById('thinkingText');
+  let _thinkingAccum = '';
+
+  // Toggle collapse on header click
+  if (thinkingHeader) {
+    thinkingHeader.addEventListener('click', () => {
+      thinkingBlock.classList.toggle('collapsed');
+    });
+  }
 
   function showThinkingBlock() {
+    _thinkingAccum = '';
+    if (thinkingText) thinkingText.textContent = '';
+    if (thinkingLabel) thinkingLabel.textContent = 'Pensando...';
+    if (thinkingMeta) thinkingMeta.textContent = '';
+    thinkingBlock.classList.remove('done', 'collapsed');
     thinkingBlock.classList.add('visible');
-    thinkingLabel.textContent = 'Pensando...';
-    thinkingMeta.textContent = '';
-    setStatusLabel('Pensando...');
     scrollToBottom();
   }
 
-  function updateThinkingBlock(tokens, elapsed) {
+  function updateThinkingBlock(tokens, elapsed, textChunk) {
     const elapsedStr = elapsed >= 60
       ? Math.floor(elapsed / 60) + 'm ' + (elapsed % 60) + 's'
       : elapsed + 's';
-    thinkingLabel.textContent = 'Pensando...';
-    thinkingMeta.textContent = elapsedStr + ' · ~' + tokens + ' tokens';
-    setStatusLabel('Pensando... (' + elapsedStr + ')');
+    if (thinkingMeta) thinkingMeta.textContent = elapsedStr;
+    // append streamed reasoning text
+    if (textChunk && thinkingText) {
+      _thinkingAccum += textChunk;
+      thinkingText.textContent = _thinkingAccum;
+      // auto-scroll the body to bottom while streaming
+      if (thinkingBody) thinkingBody.scrollTop = thinkingBody.scrollHeight;
+    }
   }
 
   function hideThinkingBlock() {
-    thinkingBlock.classList.remove('visible');
-    setStatusLabel('Gerando...');
+    if (!thinkingBlock.classList.contains('visible')) return;
+    thinkingBlock.classList.add('done');
+    thinkingBlock.classList.add('collapsed');
+    if (thinkingLabel) thinkingLabel.textContent = 'Raciocínio concluído';
   }
 
   /* ── Session list ── */
@@ -1498,21 +1174,17 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       sessionList.innerHTML = '<div class="session-empty">Nenhuma sessão encontrada</div>';
       return;
     }
-    const groups = groupByDate(sessions);
     let html = '';
-    for (const [label, items] of groups) {
-      html += '<div class="session-group-label">' + escapeForMd(label) + '</div>';
-      for (const s of items) {
-        const _title = escapeForMd(s.title || s.id || 'Sem título');
-        const _preview = (s.preview && !s.preview.startsWith((s.title || '').slice(0, 40)))
-          ? '<div class="session-item-preview">' + escapeForMd(s.preview) + '</div>' : '';
-        html += '<div class="session-item" data-session-id="' + (s.id || '') + '">' +
-          '<div class="session-item-title">' + _title + '</div>' +
-          _preview +
-          '<div class="session-item-time">' + escapeForMd(s.timeLabel || '') + '</div>' +
-          '<button class="session-delete-btn" data-delete-id="' + (s.id || '') + '" title="Excluir sessão"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' +
-        '</div>';
-      }
+    for (const s of sessions) {
+      const _title = escapeForMd(s.title || s.id || 'Sem título');
+      const _preview = (s.preview && !s.preview.startsWith((s.title || '').slice(0, 40)))
+        ? '<div class="session-item-preview">' + escapeForMd(s.preview) + '</div>' : '';
+      html += '<div class="session-item" data-session-id="' + (s.id || '') + '">' +
+        '<div class="session-item-title">' + _title + '</div>' +
+        _preview +
+        '<div class="session-item-time">' + escapeForMd(s.timeLabel || '') + '</div>' +
+        '<button class="session-delete-btn" data-delete-id="' + (s.id || '') + '" title="Excluir sessão"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' +
+      '</div>';
     }
     sessionList.innerHTML = html;
     sessionList.querySelectorAll('.session-delete-btn').forEach(btn => {
@@ -1686,8 +1358,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     switch (msg.type) {
       case 'stream_start':
         // Servidor começou a gerar — atualiza label do prefill mas mantém timer
-        _showPrefill('Aguardando 1º token...');
-        setStreaming(true, 'Gerando...');
+        _showPrefill('Gerando resposta...');
+        setStreaming(true);
         getOrCreateAssistantEl();
         break;
 
@@ -1706,10 +1378,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
           textEl.innerHTML = renderMarkdown(msg.text);
         }
         finalizeAssistant();
-        if (msg.usage) {
-          const u = msg.usage;
-          statusUsage.textContent = (u.input_tokens || 0) + ' in / ' + (u.output_tokens || 0) + ' out';
-        }
         if (msg.final) {
           setStreaming(false);
         }
@@ -1718,7 +1386,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
       case 'tool_use':
         appendToolCard(msg.toolUse);
-        setStatusLabel('Executando: ' + (msg.toolUse.displayName || msg.toolUse.name || 'ferramenta') + '...');
         break;
 
       case 'tool_result':
@@ -1738,7 +1405,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         break;
 
       case 'status':
-        setStatusLabel(msg.content || 'Trabalhando...');
         break;
 
       case 'rate_limit':
@@ -1750,7 +1416,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         break;
 
       case 'thinking_delta':
-        updateThinkingBlock(msg.tokens || 0, msg.elapsed || 0);
+        updateThinkingBlock(msg.tokens || 0, msg.elapsed || 0, msg.text || '');
         break;
 
       case 'thinking_end':
@@ -1758,16 +1424,17 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         break;
 
       case 'system_info':
-        if (msg.model) {
-          statusUsage.textContent = msg.model;
+        if (msg.model && modelLabel) {
+          const raw = String(msg.model);
+          const short = raw.replace(/^claude-/, 'Claude ').replace(/-\d{8}$/, '').replace(/-/g, ' ');
+          modelLabel.textContent = short.length > 22 ? short.substring(0, 20) + '\u2026' : short;
         }
         break;
 
       case 'error':
         setStreaming(false);
         finalizeAssistant();
-        statusDot.className = 'status-dot error';
-        statusText.textContent = 'Erro: ' + (msg.message || 'Erro desconhecido');
+        appendStatusMessage('Erro: ' + (msg.message || 'Erro desconhecido'));
         break;
 
       case 'session_list':
@@ -1788,9 +1455,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         currentTextEl = null;
         _chatTitle = '';
         setChatTitle('');
-        statusUsage.textContent = '';
-        statusDot.className = 'status-dot connected';
-        statusText.textContent = 'Pronto';
         break;
 
       case 'restore_messages':
@@ -1846,19 +1510,10 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         break;
 
       case 'process_ready':
-        // Process just started — only update status dot, never reset streaming
-        // (user may already be waiting for a response mid-restart).
-        if (!isStreaming) {
-          statusDot.className = 'status-dot connected';
-          statusText.textContent = '';
-        }
         break;
 
       case 'connected':
-        // Process exited — always unblock the UI regardless of streaming state.
         setStreaming(false);
-        statusDot.className = 'status-dot connected';
-        statusText.textContent = '';
         break;
 
       default:

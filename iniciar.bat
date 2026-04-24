@@ -14,24 +14,8 @@ echo  NeveCode - Iniciando
 echo ============================================================
 echo.
 
-:: ── Empacotar e instalar extensao VS Code (sempre atualiza) ─────────────────
-echo Atualizando extensao VS Code...
-cd /d "%EXT_DIR%"
-call npx --yes @vscode/vsce package --no-dependencies >nul 2>&1
-if !ERRORLEVEL! NEQ 0 (
-    echo AVISO: Falha ao empacotar extensao. Continuando com versao anterior.
-) else (
-    set "VSIX_FILE="
-    for /f "delims=" %%F in ('dir /b /o-d "*.vsix" 2^>nul') do (
-        if not defined VSIX_FILE set "VSIX_FILE=%%F"
-    )
-    if defined VSIX_FILE (
-        call code --install-extension "!VSIX_FILE!" --force >nul 2>&1
-        echo Extensao atualizada: !VSIX_FILE!
-    )
-)
-
-:: Configurar variaveis de ambiente e settings (na primeira vez ou se necessario)
+:: ── Verificar se extensao VS Code esta instalada ───────────────────────────
+echo Verificando extensao VS Code...
 code --list-extensions 2>nul | findstr /i "%EXT_ID%" >nul 2>&1
 if !ERRORLEVEL! NEQ 0 (
     setx CLAUDE_CODE_USE_OPENAI "1" >nul

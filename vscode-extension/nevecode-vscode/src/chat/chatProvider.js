@@ -31,9 +31,18 @@ function getLaunchConfig() {
   const permissionMode = cfg.get('permissionMode', 'acceptEdits');
   const env = {};
   if (shimEnabled) env.CLAUDE_CODE_USE_OPENAI = '1';
+  // Prefer system-installed ripgrep over missing vendored binary
+  env.USE_BUILTIN_RIPGREP = '0';
   const folders = vscode.workspace.workspaceFolders;
   const cwd = folders && folders.length > 0 ? folders[0].uri.fsPath : undefined;
-  return { command, cwd, env, permissionMode };
+  // Append behavioral instructions via system prompt file (if present)
+  const path = require('path');
+  const fs = require('fs');
+  const promptFile = path.resolve(__dirname, '..', '..', '..', '..', 'nevecode-prompt-append.txt');
+  const extraArgs = fs.existsSync(promptFile)
+    ? ['--append-system-prompt-file', promptFile]
+    : [];
+  return { command, cwd, env, permissionMode, extraArgs };
 }
 
 class ChatController {
@@ -50,7 +59,7 @@ class ChatController {
     this._thinkingTokens = 0;
     this._thinkingStartTime = null;
     this._currentBlockType = null;
-
+    this._lastModel = null;  // cache for new webviews
     this._onDidChangeState = new vscode.EventEmitter();
     this.onDidChangeState = this._onDidChangeState.event;
   }
@@ -61,6 +70,10 @@ class ChatController {
 
   registerWebview(webview) {
     this._webviews.add(webview);
+    // If we already know the model, send it immediately so the label appears on load
+    if (this._lastModel) {
+      try { webview.postMessage({ type: 'system_info', model: this._lastModel, sessionId: this._currentSessionId }); } catch {}
+    }
     return { dispose: () => this._webviews.delete(webview) };
   }
 
@@ -85,7 +98,7 @@ class ChatController {
     // Use the explicitly requested sessionId only — never inherit a leftover id.
     this._currentSessionId = opts.sessionId || null;
 
-    const { command, cwd, env, permissionMode } = getLaunchConfig();
+    const { command, cwd, env, permissionMode, extraArgs: launchExtraArgs } = getLaunchConfig();
 
     this._process = new ProcessManager({
       command,
@@ -95,7 +108,7 @@ class ChatController {
       continueSession: opts.continueSession || false,
       model: opts.model,
       permissionMode,
-      extraArgs: opts.extraArgs || [],
+      extraArgs: [...(launchExtraArgs || []), ...(opts.extraArgs || [])],
     });
 
     this._readyResolve = null;
@@ -109,7 +122,13 @@ class ChatController {
       this._handleMessage(msg);
     });
     this._process.onError((err) => {
+      // Fatal spawn error (ENOENT, EACCES, etc.) — process never started
       this._broadcast({ type: 'error', message: err.message || String(err) });
+    });
+    this._process.onStderr((text) => {
+      // CLI wrote to stderr: warning or debug info, not a fatal error
+      // Show as status so it doesn't interrupt the chat stream
+      this._broadcast({ type: 'status', content: '⚠ ' + text.split('\n')[0].trim() });
     });
     this._process.onExit(({ code }) => {
       // Flush any remaining streamed text
@@ -233,6 +252,7 @@ class ChatController {
 
     // System message — extract model and session info
     if (msg.type === 'system') {
+      if (msg.model) this._lastModel = msg.model;
       this._broadcast({
         type: 'system_info',
         model: msg.model || null,
@@ -439,12 +459,14 @@ class ChatController {
             this._accumulatedText += event.delta.text;
             this._broadcast({ type: 'stream_delta', text: this._accumulatedText });
           } else if (event.delta.type === 'thinking_delta') {
-            this._thinkingTokens += (event.delta.thinking || '').length;
+            const chunk = event.delta.thinking || '';
+            this._thinkingTokens += chunk.length;
             const elapsed = Math.round((Date.now() - (this._thinkingStartTime || Date.now())) / 1000);
             this._broadcast({
               type: 'thinking_delta',
               tokens: this._thinkingTokens,
               elapsed,
+              text: chunk,
             });
           } else if (event.delta.type === 'input_json_delta' && event.delta.partial_json) {
             const lastTool = this._toolUses[this._toolUses.length - 1];

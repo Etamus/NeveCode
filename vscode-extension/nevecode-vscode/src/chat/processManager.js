@@ -44,9 +44,11 @@ class ProcessManager {
 
     this._onMessageEmitter = new vscode.EventEmitter();
     this._onErrorEmitter = new vscode.EventEmitter();
+    this._onStderrEmitter = new vscode.EventEmitter();
     this._onExitEmitter = new vscode.EventEmitter();
     this.onMessage = this._onMessageEmitter.event;
     this.onError = this._onErrorEmitter.event;
+    this.onStderr = this._onStderrEmitter.event;
     this.onExit = this._onExitEmitter.event;
   }
 
@@ -152,9 +154,10 @@ class ProcessManager {
   _onStderr(chunk) {
     const trimmed = chunk.trim();
     if (!trimmed) return;
-    // Suppress common non-error noise from the CLI (deprecation warnings, etc.)
+    // Suppress Node.js/Bun internal noise
     if (/^\(node:\d+\)|^DeprecationWarning|^ExperimentalWarning/i.test(trimmed)) return;
-    this._onErrorEmitter.fire(new Error(trimmed));
+    // CLI stderr is warnings/debug info, not fatal errors — emit via onStderr
+    this._onStderrEmitter.fire(trimmed);
   }
 
   sendUserMessage(text) {
@@ -197,6 +200,7 @@ class ProcessManager {
     this.kill();
     this._onMessageEmitter.dispose();
     this._onErrorEmitter.dispose();
+    this._onStderrEmitter.dispose();
     this._onExitEmitter.dispose();
   }
 }

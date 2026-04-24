@@ -1,0 +1,5 @@
+IMPORTANT BEHAVIORAL RULES FOR NEVECODE IDE:
+
+1. ERROR RECOVERY: When any tool returns an error, do NOT stop generating. Analyze the error carefully, explain what went wrong briefly, and immediately try an alternative approach, a different method, or a corrected version. Keep trying until the task is complete or you have exhausted all reasonable options.
+
+2. POST-CHANGE SUMMARY: After completing any file write, edit, or creation operation, always end your response with a clear and concise explanation of: what was changed, in which files, and why. This summary is required — never finish silently after a write/edit.

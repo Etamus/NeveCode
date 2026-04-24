@@ -39,12 +39,16 @@ function Get-CudaVersion {
 }
 
 function Resolve-CudaTag([string]$ver) {
-    # Mapeia versão decimal → sufixo de release do llama.cpp (cu12x, cu11x)
+    # Mapeia versão decimal → sufixo de release do llama.cpp
     $major = ($ver -split '\.')[0]
     switch ($major) {
-        '12' { return 'cu12.4.0' }
-        '11' { return 'cu11.8.0' }
-        default { return $null }
+        '13' { return '13.1' }
+        '12' { return '12.4' }
+        '11' { return '12.4' }  # usa 12.4 como minimo suportado
+        default {
+            Write-Host "[llama.cpp] AVISO: CUDA $ver nao reconhecido, usando 13.1." -ForegroundColor Yellow
+            return '13.1'
+        }
     }
 }
 
@@ -62,11 +66,12 @@ function Get-InstalledVersion {
 
 function Select-DownloadAsset([string]$tag, [string]$cudaTag) {
     $base = "https://github.com/ggml-org/llama.cpp/releases/download/$tag"
-    if ($cudaTag) {
-        return "$base/llama-$tag-bin-win-cuda-$cudaTag-x64.zip"
+    if (-not $cudaTag) {
+        Write-Host "[llama.cpp] ERRO: CUDA nao detectado. Uma GPU NVIDIA com drivers CUDA e necessaria." -ForegroundColor Red
+        Write-Host "[llama.cpp] Instale os drivers CUDA em: https://developer.nvidia.com/cuda-downloads" -ForegroundColor Yellow
+        exit 1
     }
-    # Fallback Vulkan (funciona na maioria das GPUs modernas)
-    return "$base/llama-$tag-bin-win-vulkan-x64.zip"
+    return "$base/llama-$tag-bin-win-cuda-$cudaTag-x64.zip"
 }
 
 function Install-LlamaBinary {
@@ -76,8 +81,8 @@ function Install-LlamaBinary {
         Write-Host "[llama.cpp] CUDA $cudaVer detectado." -ForegroundColor Green
         $cudaTag = Resolve-CudaTag $cudaVer
     } else {
-        Write-Host "[llama.cpp] CUDA nao encontrado, usando Vulkan." -ForegroundColor Yellow
-        $cudaTag = $null
+        Write-Host "[llama.cpp] AVISO: nvidia-smi/nvcc nao retornou versao CUDA. Usando cu12.4.0 generico." -ForegroundColor Yellow
+        $cudaTag = Resolve-CudaTag 'unknown'
     }
 
     Write-Host "[llama.cpp] Obtendo versao mais recente..." -ForegroundColor Cyan
@@ -105,6 +110,21 @@ function Install-LlamaBinary {
     Write-Host "[llama.cpp] Instalado em $BinDir" -ForegroundColor Green
     # Salvar versão instalada
     $tag | Set-Content (Join-Path $BinDir 'version.txt') -Encoding UTF8
+
+    # Baixar CUDA runtime DLLs (necessarios para ggml-cuda.dll)
+    Write-Host "[llama.cpp] Baixando CUDA runtime DLLs..." -ForegroundColor Cyan
+    $cudartUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$tag/cudart-llama-bin-win-cuda-$cudaTag-x64.zip"
+    $cudartZip = Join-Path $env:TEMP 'llama-cudart.zip'
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $wc = New-Object System.Net.WebClient
+        $wc.DownloadFile($cudartUrl, $cudartZip)
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($cudartZip, $BinDir)
+        Remove-Item $cudartZip -Force
+        Write-Host "[llama.cpp] CUDA runtime DLLs instalados." -ForegroundColor Green
+    } catch {
+        Write-Host "[llama.cpp] AVISO: falha ao instalar cudart DLLs: $_" -ForegroundColor Yellow
+    }
 }
 
 function Find-ModelFile {
@@ -125,24 +145,10 @@ function Test-PortListening([int]$p) {
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
-# 1. Verificar / instalar binário (e atualizar se houver versão mais nova)
+# 1. Verificar / instalar binário apenas se não estiver presente
 if (-not (Test-Path $ServerExe)) {
     Write-Host "[llama.cpp] llama-server.exe nao encontrado. Baixando..." -ForegroundColor Yellow
     Install-LlamaBinary
-} else {
-    $installedVer = Get-InstalledVersion
-    Write-Host "[llama.cpp] Verificando atualizacoes (instalado: $installedVer)..." -ForegroundColor Cyan
-    try {
-        $latestVer = Get-LatestLlamaCppVersion
-        if ($installedVer -ne $latestVer) {
-            Write-Host "[llama.cpp] Nova versao disponivel: $latestVer. Atualizando..." -ForegroundColor Yellow
-            Install-LlamaBinary
-        } else {
-            Write-Host "[llama.cpp] Binario ja esta na versao mais recente ($installedVer)." -ForegroundColor Green
-        }
-    } catch {
-        Write-Host "[llama.cpp] Nao foi possivel verificar atualizacoes. Usando versao instalada." -ForegroundColor DarkGray
-    }
 }
 
 if (-not (Test-Path $ServerExe)) {
@@ -188,20 +194,27 @@ Write-Host "[llama.cpp] Modelo: $modelPath" -ForegroundColor Cyan
 $modelAlias = [System.IO.Path]::GetFileNameWithoutExtension($modelPath)
 Write-Host "[llama.cpp] Alias: $modelAlias" -ForegroundColor Cyan
 
-# Monta argumentos (PS 5.1: Start-Process junta array com espacos; valores com
-# espacos precisam de aspas duplas embutidas para nao virarem args separados)
-# Nota: --flash-attn e flag booleana (sem valor); --cache-type so funciona com CUDA/Metal
+# Monta argumentos do servidor
+# NOTAS:
+#   --flash-attn e flag booleana (sem valor - nao passe 'on')
+#   --cache-type q4_0: cache KV 4-bit (menor VRAM, prefill muito mais rapido)
+#   --batch-size 2048: processar prefill em lotes maiores (mais rapido)
+#   --no-mmap: evita page faults apos o modelo estar carregado
+#   --reasoning-budget 0: desabilita thinking no Qwen3 (evita respostas em branco)
 $serverArgs = @(
-    '--model',        "`"$modelPath`"",
-    '--alias',        "`"$modelAlias`"",
-    '--port',         "$Port",
-    '--host',         '127.0.0.1',
-    '--n-gpu-layers', '-1',
-    '--flash-attn',   'on',
-    '--cache-type-k', 'q8_0',
-    '--cache-type-v', 'q8_0',
-    '--ctx-size',     '131072',
-    '--parallel',     '1',
+    '--model',             "`"$modelPath`"",
+    '--alias',             "`"$modelAlias`"",
+    '--port',              "$Port",
+    '--host',              '127.0.0.1',
+    '--n-gpu-layers',      '-1',
+    '--flash-attn',        'on',
+    '--cache-type-k',      'q4_0',
+    '--cache-type-v',      'q4_0',
+    '--ctx-size',          '65536',
+    '--batch-size',        '2048',
+    '--ubatch-size',       '512',
+    '--reasoning-budget',  '0',
+    '--parallel',          '1',
     '--cont-batching',
     '--no-mmap'
 )
