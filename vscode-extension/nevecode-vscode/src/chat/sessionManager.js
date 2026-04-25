@@ -14,6 +14,21 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
+// Remove o prefixo [diretório de trabalho: ...] injetado pelo chatProvider antes de enviar à IA.
+// Esse prefixo não deve aparecer no histórico ou no título da sessão.
+function stripWorkspacePrefix(text) {
+  if (!text) return text;
+  return text.replace(/^\[diretório de trabalho:[^\]]*\]\n\n/, '');
+}
+
+// Remove o bloco <task_plan>...</task_plan> que é injetado apenas para a IA.
+function stripInjected(text) {
+  if (!text) return text;
+  return stripWorkspacePrefix(text)
+    .replace(/<task_plan>[\s\S]*?<\/task_plan>\n?/, '')
+    .trim();
+}
+
 const MAX_SANITIZED_LENGTH = 80;
 
 function sanitizePath(name) {
@@ -133,10 +148,10 @@ class SessionManager {
         if (!preview && entry.type === 'user' && entry.message) {
           const content = entry.message.content;
           if (typeof content === 'string') {
-            preview = content.slice(0, 120);
+            preview = stripInjected(content).slice(0, 120);
           } else if (Array.isArray(content)) {
             const textBlock = content.find(b => b.type === 'text');
-            preview = textBlock ? (textBlock.text || '').slice(0, 120) : '';
+            preview = textBlock ? stripInjected(textBlock.text || '').slice(0, 120) : '';
           }
         }
 
@@ -162,7 +177,7 @@ class SessionManager {
 
     return {
       id: sessionId,
-      title: title || preview.slice(0, 60) || 'Untitled session',
+      title: title || (preview.length > 60 ? preview.slice(0, 57) + '\u2026' : preview) || 'Untitled session',
       preview: preview || '',
       timestamp,
       timeLabel,
@@ -220,9 +235,9 @@ class SessionManager {
           // Skip tool result messages (they're user messages with tool_result blocks)
           if (Array.isArray(c) && c.length > 0 && c[0].type === 'tool_result') continue;
           const text = typeof c === 'string'
-            ? c
+            ? stripInjected(c)
             : Array.isArray(c)
-              ? c.filter(b => b.type === 'text').map(b => b.text).join('')
+              ? stripInjected(c.filter(b => b.type === 'text').map(b => b.text).join(''))
               : '';
           if (text) messages.push({ role: 'user', text });
         } else if (entry.type === 'assistant' && entry.message) {

@@ -9,10 +9,10 @@
 <table>
   <tr>
     <td align="center">
-      <img width="494" height="969" alt="{2D62FB04-3075-4F9A-A577-13C56BEF8B4B}" src="https://github.com/user-attachments/assets/59b38270-a2b9-401e-85b0-e8f6b2d54f57" />
+      <img width="498" height="979" alt="{A4E4567D-5CAA-45D0-ADDC-49D11B9EE9D8}" src="https://github.com/user-attachments/assets/254bc41b-6292-41ac-9b07-d4ea5eaecbb1" />
     </td>
     <td align="center">
-<img width="495" height="973" alt="teste" src="https://github.com/user-attachments/assets/ce5c4b01-cac7-4bfa-853a-58ffcb92c66b" />
+      <img width="500" height="982" alt="{1D1CD4F4-4073-4C1E-8D67-3624F194E751}" src="https://github.com/user-attachments/assets/e74f5e60-3d09-4da9-85ec-827b48b4f7a5" />
     </td>
   </tr>
 </table>

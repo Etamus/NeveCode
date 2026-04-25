@@ -191,6 +191,12 @@ class ProcessManager {
 
   kill() {
     if (this._process && !this._process.killed) {
+      if (process.platform === 'win32' && this._process.pid) {
+        // On Windows, kill(SIGTERM) only kills the cmd.exe shell, not the
+        // openclaude child process. Use taskkill /F /T to kill the whole tree.
+        const { exec } = require('child_process');
+        exec('taskkill /F /T /PID ' + this._process.pid, () => {});
+      }
       this._process.kill('SIGTERM');
     }
   }

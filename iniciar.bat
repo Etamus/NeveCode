@@ -16,8 +16,17 @@ echo.
 
 :: ── Verificar se extensao VS Code esta instalada ───────────────────────────
 echo Verificando extensao VS Code...
-code --list-extensions 2>nul | findstr /i "%EXT_ID%" >nul 2>&1
-if !ERRORLEVEL! NEQ 0 (
+
+:: Detectar pasta da extensao instalada (mais confiavel que code --list-extensions)
+set "EXT_INSTALLED_DIR="
+for /d %%D in ("%USERPROFILE%\.vscode\extensions\%EXT_ID%*") do (
+    if not defined EXT_INSTALLED_DIR set "EXT_INSTALLED_DIR=%%D"
+)
+
+if not defined EXT_INSTALLED_DIR (
+    echo  Extensao nao encontrada. Instalando...
+
+    :: Atualizar settings.json e variaveis de ambiente
     setx CLAUDE_CODE_USE_OPENAI "1" >nul
     setx OPENAI_BASE_URL "http://localhost:8080/v1" >nul
     setx OPENAI_API_KEY "no-key" >nul
@@ -35,12 +44,45 @@ if !ERRORLEVEL! NEQ 0 (
       "$s | ConvertTo-Json -Depth 20 | Set-Content $f -Encoding UTF8;" ^
       "Write-Host 'settings.json atualizado.'"
 
+    :: Empacotar e instalar a extensao
+    where code >nul 2>&1
+    if !ERRORLEVEL! NEQ 0 (
+        echo.
+        echo  AVISO: Comando 'code' nao encontrado no PATH.
+        echo  Abra o VS Code, pressione Ctrl+Shift+P e execute:
+        echo    Shell Command: Install 'code' command in PATH
+        echo  Depois rode este arquivo novamente.
+        echo.
+        pause
+        exit /b 1
+    )
+
+    cd /d "%EXT_DIR%"
+    echo  Empacotando extensao...
+    call npx --yes @vscode/vsce package --no-dependencies --skip-license --out nevecode.vsix
+    if !ERRORLEVEL! NEQ 0 (
+        echo  ERRO: Falha ao empacotar extensao.
+        pause
+        exit /b 1
+    )
+
+    echo  Instalando extensao no VS Code...
+    call code --install-extension "%EXT_DIR%\nevecode.vsix" --force
+    if !ERRORLEVEL! NEQ 0 (
+        echo  ERRO: Falha ao instalar extensao.
+        pause
+        exit /b 1
+    )
+    del /q "%EXT_DIR%\nevecode.vsix" 2>nul
+
     echo.
-    echo  Extensao instalada pela primeira vez! REINICIE o VS Code para carrega-la.
+    echo  Extensao instalada! REINICIE o VS Code para carrega-la.
     echo  Depois rode novamente este arquivo para iniciar o servidor.
     echo.
     pause
     exit /b 0
+) else (
+    echo  Extensao encontrada em: !EXT_INSTALLED_DIR!
 )
 echo.
 

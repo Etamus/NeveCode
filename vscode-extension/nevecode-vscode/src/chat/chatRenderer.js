@@ -68,12 +68,12 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .chat-header .brand.brand-hidden { visibility: hidden; }
     .header-btn {
       display: flex; align-items: center; justify-content: center;
-      width: 22px; height: 22px; border-radius: 4px; border: none;
-      background: transparent; color: var(--vscode-icon-foreground, var(--vscode-foreground));
-      cursor: pointer; opacity: 0.6; transition: opacity 100ms, background 100ms;
+      width: 26px; height: 26px; border-radius: 4px; border: none;
+      background: transparent; color: rgba(255,255,255,0.82);
+      cursor: pointer; transition: background 100ms;
       flex-shrink: 0; padding: 0;
     }
-    .header-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+    .header-btn:hover { color: #ffffff; background: var(--vscode-toolbar-hoverBackground); }
     .header-btn.danger { color: var(--vscode-errorForeground); }
     #abortBtn { display: none; }
     button:focus { outline: none; }
@@ -192,18 +192,22 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     /* ── Tool card (Copilot "Working" style) ── */
     .tool-card {
       margin: 3px 0; border-radius: 5px; overflow: hidden;
-      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, transparent));
+      border: 1px solid transparent;
       background: transparent;
     }
     .tool-header {
-      display: flex; align-items: center; gap: 7px;
+      display: flex; align-items: center; gap: 6px;
       padding: 5px 10px; cursor: pointer; user-select: none; min-height: 28px;
       border-radius: 5px; transition: background 80ms;
     }
-    .tool-header:hover { background: var(--vscode-list-hoverBackground); }
+    .tool-card.expanded .tool-header:hover { background: var(--vscode-list-hoverBackground); }
+    .tool-card.expanded {
+      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, rgba(128,128,128,0.25)));
+    }
     .tool-icon { display: flex; align-items: center; color: var(--vscode-descriptionForeground); flex-shrink: 0; opacity: 0.8; }
-    .tool-name { font-size: 12px; color: var(--vscode-foreground); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tool-path { font-size: 11px; color: var(--vscode-descriptionForeground); margin-left: 3px; font-weight: 400; }
+    .tool-name { font-size: 12px; color: var(--vscode-foreground); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 50%; }
+    .tool-path { font-size: 11px; color: var(--vscode-descriptionForeground); flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 35%; }
+    .tool-spacer { flex: 1; }
     .tool-status { font-size: 11px; color: var(--vscode-descriptionForeground); flex-shrink: 0; display: flex; align-items: center; gap: 3px; }
     .tool-status.error { color: var(--vscode-errorForeground); }
     .tool-running-spinner {
@@ -237,6 +241,63 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     /* ── File link ── */
     .file-link { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: none; }
     .file-link:hover { text-decoration: underline; }
+
+    /* ── Task panel (plano acima da barra) ── */
+    .task-panel {
+      flex-shrink: 0; display: none; flex-direction: column;
+      margin: 0 8px 4px; border-radius: 6px; overflow: hidden;
+      border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.2));
+      background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+    }
+    .task-panel.visible { display: flex; }
+    .task-panel-header {
+      display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+      cursor: pointer; user-select: none;
+      border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.12));
+    }
+    .task-panel.collapsed .task-panel-header { border-bottom: none; }
+    .task-panel-title {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--vscode-descriptionForeground); flex: 1;
+    }
+    .task-panel-spinner {
+      width: 10px; height: 10px; flex-shrink: 0;
+      border: 1.5px solid rgba(128,128,128,0.2);
+      border-top-color: var(--vscode-descriptionForeground);
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    .task-panel.done .task-panel-spinner { display: none; }
+    .task-panel-chevron {
+      flex-shrink: 0; color: var(--vscode-descriptionForeground); opacity: 0.5;
+      display: flex; align-items: center; transition: transform 150ms;
+    }
+    .task-panel.collapsed .task-panel-chevron { transform: rotate(-90deg); }
+    .task-list {
+      padding: 3px 8px 5px; display: flex; flex-direction: column; gap: 1px;
+      max-height: 130px; overflow-y: auto;
+    }
+    .task-panel.collapsed .task-list { display: none; }
+    .task-item {
+      display: flex; align-items: center; gap: 7px; padding: 2px 0;
+      font-size: 12px; color: var(--vscode-descriptionForeground);
+      animation: task-fadein 100ms ease;
+    }
+    @keyframes task-fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+    .task-item.active { color: var(--vscode-foreground); }
+    .task-item.done { opacity: 0.45; }
+    .task-item.error { color: var(--vscode-errorForeground); opacity: 0.9; }
+    .task-item-icon { flex-shrink: 0; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; }
+    .task-item-spinner {
+      width: 9px; height: 9px;
+      border: 1.5px solid rgba(128,128,128,0.2);
+      border-top-color: var(--vscode-foreground);
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    .task-circle {
+      width: 7px; height: 7px; border-radius: 50%;
+      border: 1.5px solid rgba(128,128,128,0.35); display: block;
+    }
+    .task-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── Permission card ── */
     .perm-card { margin: 8px 0; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground)); background: var(--vscode-inputValidation-warningBackground, transparent); }
@@ -336,19 +397,26 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       flex-shrink: 0; padding: 0 8px 8px; display: flex; flex-direction: column;
     }
     .file-chips-row {
-      display: none; flex-wrap: wrap; gap: 4px; padding: 6px 8px 4px;
-      border: 1px solid var(--vscode-input-border, transparent);
-      border-bottom: none; border-radius: 6px 6px 0 0;
-      background: var(--vscode-input-background);
+      display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px 2px;
+      min-height: 28px; align-items: center;
     }
-    .file-chips-row.has-chips { display: flex; }
+    .file-chips-row:empty, .file-chips-row.hidden { display: none; }
     .file-chip {
-      display: flex; align-items: center; gap: 5px; padding: 4px 10px 4px 8px;
-      border-radius: 4px; border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.25));
-      background: var(--vscode-editorGroupHeader-tabsBackground, rgba(128,128,128,0.1));
+      display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 7px;
+      border-radius: 4px; border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.3));
+      background: transparent;
       font-size: 12px; color: var(--vscode-foreground);
       max-width: 220px; user-select: none;
     }
+    .file-chip-suggest {
+      display: flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px;
+      border-radius: 4px; border: 1px dashed rgba(128,128,128,0.4);
+      background: transparent;
+      font-size: 12px; color: var(--vscode-descriptionForeground);
+      max-width: 240px; user-select: none; cursor: pointer;
+      transition: border-color 120ms, color 120ms, background 120ms;
+    }
+    .file-chip-suggest:hover { border-color: rgba(255,255,255,0.5); color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
     .file-chip-icon { flex-shrink: 0; opacity: 0.65; }
     .file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
     .file-chip-remove {
@@ -362,14 +430,14 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .input-box {
       display: flex; flex-direction: column;
       border: 1px solid var(--vscode-input-border, transparent);
-      border-radius: 6px; background: var(--vscode-input-background);
+      border-radius: 6px;
+      background: var(--vscode-input-background);
       transition: border-color 120ms;
     }
-    .file-chips-row.has-chips + .input-box { border-radius: 0 0 6px 6px; border-top: none; }
     .input-box:focus-within { border-color: var(--vscode-focusBorder); }
     .input-area textarea {
-      width: 100%; min-height: 52px; max-height: 200px;
-      padding: 9px 12px 6px; border: none; border-radius: 6px 6px 0 0;
+      width: 100%; min-height: 36px; max-height: 200px;
+      padding: 6px 12px 4px; border: none; border-radius: 6px 6px 0 0;
       background: transparent; color: var(--vscode-input-foreground, var(--vscode-foreground));
       font-family: var(--vscode-font-family, "Segoe UI", system-ui); font-size: 13px;
       resize: none; outline: none; line-height: 1.55;
@@ -379,45 +447,45 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .input-area textarea { scrollbar-width: none; }
 
     .input-box-bar {
-      display: flex; align-items: center; padding: 3px 6px 4px; gap: 2px;
-      border-top: 1px solid var(--vscode-editorWidget-border, transparent);
+      display: flex; align-items: center; padding: 5px 6px 6px; gap: 2px;
+      border-top: none;
     }
     .attach-btn {
       display: flex; align-items: center; justify-content: center;
-      width: 24px; height: 24px; border-radius: 4px; border: none;
-      background: transparent; color: var(--vscode-icon-foreground, var(--vscode-foreground));
+      width: 26px; height: 26px; border-radius: 4px; border: none;
+      background: transparent; color: rgba(255,255,255,0.82);
       font-size: 18px; font-weight: 300; line-height: 1;
-      cursor: pointer; opacity: 0.6; transition: opacity 120ms, background 120ms; padding: 0;
+      cursor: pointer; transition: background 120ms; padding: 0;
     }
-    .attach-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+    .attach-btn:hover { color: #ffffff; background: var(--vscode-toolbar-hoverBackground); }
 
     /* bar buttons — lightweight, text+icon combos */
     .bar-btn {
       display: flex; align-items: center; gap: 3px; padding: 2px 6px; height: 22px;
       border-radius: 4px; border: none; background: transparent;
-      color: var(--vscode-descriptionForeground);
+      color: rgba(255,255,255,0.82);
       font-family: var(--vscode-font-family, "Segoe UI"); font-size: 11px;
       cursor: pointer; user-select: none; white-space: nowrap;
-      transition: background 120ms, color 120ms; flex-shrink: 0;
+      transition: background 120ms; flex-shrink: 0;
     }
-    .bar-btn:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
-    #envBtn:hover, #modelBtn:hover { background: transparent; color: var(--vscode-descriptionForeground); }
-    .bar-btn svg { opacity: 0.70; flex-shrink: 0; }
+    .bar-btn:hover { color: #ffffff; background: var(--vscode-toolbar-hoverBackground); }
+    svg { display: block; transform: translateZ(0); overflow: visible; }
+    .bar-btn svg { flex-shrink: 0; }
     .bar-chevron { opacity: 0.45 !important; }
     .bar-btn.bar-icon { padding: 2px 4px; }
 
     .send-btn {
       margin-left: auto; display: flex; align-items: center; justify-content: center;
-      width: 26px; height: 26px; border-radius: 5px; border: none;
+      width: 28px; height: 28px; border-radius: 5px; border: none;
       background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.18));
-      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-      cursor: not-allowed; opacity: 0.35;
-      transition: opacity 120ms, background 120ms; flex-shrink: 0; padding: 0;
+      color: rgba(255,255,255,0.35);
+      cursor: not-allowed;
+      transition: color 120ms, background 120ms; flex-shrink: 0; padding: 0;
     }
-    .send-btn:not(:disabled):not(.stopping) { opacity: 1; cursor: pointer; }
+    .send-btn:not(:disabled):not(.stopping) { color: #ffffff; cursor: pointer; }
     .send-btn:not(:disabled):not(.stopping):hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.28)); }
-    .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .send-btn.stopping { opacity: 1; cursor: pointer; }
+    .send-btn:disabled { color: rgba(255,255,255,0.35); cursor: not-allowed; }
+    .send-btn.stopping { color: #ffffff; cursor: pointer; }
     .send-btn.stopping:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.28)); }
 
     /* ── Input footer ── */
@@ -458,8 +526,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     .session-item:hover { background: var(--vscode-list-hoverBackground); }
     .session-item-title { font-size: 13px; font-weight: 500; color: var(--vscode-foreground); margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .session-item-preview { font-size: 11px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-item-time { font-size: 10px; color: var(--vscode-descriptionForeground); opacity: 0.55; }
-    .session-delete-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 4px; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 120ms, background 120ms; }
+    .session-item-time { font-size: 11.5px; color: var(--vscode-descriptionForeground); opacity: 0.65; }
+    .session-delete-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-65%); width: 22px; height: 22px; border-radius: 4px; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 120ms, background 120ms; }
     .session-item:hover .session-delete-btn { opacity: 0.5; }
     .session-delete-btn:hover { opacity: 1 !important; background: var(--vscode-list-hoverBackground); }
     .session-empty { text-align: center; padding: 32px; font-size: 12px; color: var(--vscode-descriptionForeground); }
@@ -468,9 +536,9 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 <body>
   <div class="chat-header">
     <div class="brand brand-hidden" id="brandTitle"></div>
-    <button class="header-btn" id="historyBtn" title="Histórico de sessões"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
-    <button class="header-btn" id="newChatBtn" title="Nova conversa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-    <button class="header-btn danger" id="abortBtn" title="Interromper geração"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3" ry="3"/></svg></button>
+    <button class="header-btn" id="historyBtn" title="Histórico de sessões"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+    <button class="header-btn" id="newChatBtn" title="Nova conversa"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="header-btn danger" id="abortBtn" title="Interromper geração"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3" ry="3"/></svg></button>
   </div>
   <div class="status-bar">
     <span class="status-dot" id="statusDot"></span>
@@ -510,8 +578,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
           <text x="107" y="45" font-family="'Segoe UI', system-ui, sans-serif" font-size="30" font-weight="300" letter-spacing="1" fill="currentColor" dominant-baseline="middle">Neve Code</text>
         </svg>`}
       </div>
-      <div class="welcome-sub">Solicite uma alteração no código ou inicie uma nova tarefa.</div>
-      <div class="welcome-hint">Pressione <kbd>${escapeHtml(modKey)}+L</kbd> para focar no campo de entrada</div>
+
+      <div class="welcome-hint"><kbd>${escapeHtml(modKey)}+L</kbd> para focar no campo de entrada</div>
     </div>
   </div>
 
@@ -537,26 +605,28 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     </div>
   </div>
 
+  <div class="task-panel" id="taskPanel"></div>
+
   <div class="input-area">
     <div class="input-box">
       <div class="file-chips-row" id="fileChipsRow"></div>
       <textarea id="chatInput" placeholder="Descreva para a Neve..." rows="1"></textarea>
       <div class="input-box-bar">
-        <button class="attach-btn" id="attachBtn" title="Anexar arquivo">+</button>
+        <button class="attach-btn" id="attachBtn" title="Anexar arquivo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="bar-btn" id="modelBtn" title="Modelo de IA">
           <span id="modelLabel"></span>
         </button>
-        <button class="send-btn" id="sendBtn" title="Enviar mensagem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+        <button class="send-btn" id="sendBtn" title="Enviar mensagem"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
       </div>
     </div>
     <div class="input-footer">
       <button class="bar-btn" id="envBtn" title="Ambiente de execução">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         <span>Local</span>
       </button>
       <div class="perm-wrap" id="permWrap">
         <button class="bar-btn" id="permBtn" title="Modo de aprovações">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           <span id="permLabel">Aprovações Padrão</span>
           <svg class="bar-chevron" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -574,7 +644,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   <div class="session-overlay" id="sessionOverlay">
     <div class="session-overlay-header">
       <h2>Histórico de sessões</h2>
-      <button class="header-btn" id="closeSessionsBtn" title="Fechar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <button class="header-btn" id="closeSessionsBtn" title="Fechar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
     </div>
     <input class="session-search" id="sessionSearch" type="text" placeholder="Pesquisar sessões..." />
     <div class="session-list" id="sessionList">
@@ -826,7 +896,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     sendBtn.disabled = !inputEl.value.trim();
   }
 
-  const SEND_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+  const SEND_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
   const STOP_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3" ry="3"/></svg>';
 
   function setStreaming(val) {
@@ -876,9 +946,11 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
   function appendUserMessage(text) {
     hideWelcome();
+    // Remove bloco <task_plan> antes de exibir — ele é injetado apenas para a IA, não para o usuário
+    const displayText = (text || '').replace(/<task_plan>[\\s\\S]*?<\\/task_plan>\\n?/g, '').trim();
     const el = document.createElement('div');
     el.className = 'msg-user';
-    el.textContent = text;
+    el.textContent = displayText;
     messagesEl.appendChild(el);
     scrollToBottom();
   }
@@ -967,11 +1039,11 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     card.innerHTML =
       '<div class="tool-header">' +
         '<span class="tool-icon">' + (toolUse.icon || '') + '</span>' +
-        '<span class="tool-name">' + escapeForMd(toolUse.displayName || toolUse.name || 'Tool') +
-          (fileLink ? ' <span class="tool-path">' + fileLink + '</span>' : '') +
-        '</span>' +
+        '<span class="tool-name">' + escapeForMd(toolUse.displayName || toolUse.name || 'Tool') + '</span>' +
+        (fileLink ? '<span class="tool-path">' + fileLink + '</span>' : '') +
         '<span class="tool-chevron"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>' +
         '<span class="tool-status ' + statusClass + '">' + statusLabel + '</span>' +
+        '<span class="tool-spacer"></span>' +
       '</div>' +
       '<div class="tool-body">' +
         pathDisplay +
@@ -1225,17 +1297,161 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
   let _chatTitle = '';
 
+  /* ── Task panel state ── */
+  const taskPanel = document.getElementById('taskPanel');
+  let _plan = null;           // string[] task list, or null
+  let _planPrebuilt = false;  // true when task_plan arrives before stream_start
+  let _planNevNextSeen = 0;   // how many <nevnext> tokens already processed
+  let _hadError = false;      // set true when 'error' fires during this response
+  let _taskClearTimer = null;
+
+  const TASK_CHECK_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:var(--vscode-testing-iconPassed,#73c991)"><polyline points="20 6 9 17 4 12"/></svg>';
+  const TASK_ERROR_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--vscode-errorForeground)"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  const CHEVRON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+  function _taskPanelBuild(tasks) {
+    if (!taskPanel) return;
+    if (_taskClearTimer) { clearTimeout(_taskClearTimer); _taskClearTimer = null; }
+    taskPanel.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'task-panel-header';
+    header.innerHTML =
+      '<span class="task-panel-title">Tarefas</span>' +
+      '<span class="task-panel-chevron">' + CHEVRON_SVG + '</span>';
+    header.addEventListener('click', () => taskPanel.classList.toggle('collapsed'));
+    taskPanel.appendChild(header);
+    const list = document.createElement('div');
+    list.className = 'task-list';
+    list.id = 'taskList';
+    tasks.forEach((label, i) => {
+      const item = document.createElement('div');
+      item.className = 'task-item pending';
+      item.dataset.idx = i;
+      item.innerHTML =
+        '<span class="task-item-icon"><span class="task-circle"></span></span>' +
+        '<span class="task-item-label">' + escapeForMd(label) + '</span>';
+      list.appendChild(item);
+    });
+    taskPanel.appendChild(list);
+    taskPanel.classList.add('visible');
+    taskPanel.classList.remove('collapsed', 'done');
+    // Ativa imediatamente a primeira tarefa
+    _taskActivateNext();
+  }
+
+  function _taskActivateNext() {
+    const list = document.getElementById('taskList');
+    if (!list) return;
+    const pending = list.querySelector('.task-item.pending');
+    if (pending) {
+      pending.className = 'task-item active';
+      const icon = pending.querySelector('.task-item-icon');
+      if (icon) icon.innerHTML = '<span class="task-item-spinner"></span>';
+    }
+  }
+
+  function _taskCompleteActive(isError) {
+    const list = document.getElementById('taskList');
+    if (!list) return;
+    const active = list.querySelector('.task-item.active');
+    if (active) {
+      active.className = 'task-item ' + (isError ? 'error' : 'done');
+      const icon = active.querySelector('.task-item-icon');
+      if (icon) icon.innerHTML = isError ? TASK_ERROR_SVG : TASK_CHECK_SVG;
+    }
+  }
+
+  // Remove <nevplan> e <nevnext> do texto exibido (completo, parcial ou fragmentos)
+  function _stripNevTags(text) {
+    return text
+      .replace(/<nevplan>[\\s\\S]*?<\\/nevplan>\\n?/g, '') // bloco completo
+      .replace(/<nevplan>[\\s\\S]*$/g, '')                 // bloco parcial (sendo streamado)
+      .replace(/<nevnext>\\n?/g, '');                      // tokens de transicao
+  }
+
+  // Processa tokens <nevnext> no texto acumulado e avança tarefas conforme necessário
+  function _taskProcessNevNext(text) {
+    const count = (text.match(/<nevnext>/g) || []).length;
+    while (_planNevNextSeen < count) {
+      _taskCompleteActive(false);
+      _taskActivateNext();
+      _planNevNextSeen++;
+    }
+  }
+
+  // Sincroniza o painel de tarefas com a lista do TodoWrite
+  // APENAS quando não existe plano pré-gerado (fallback sem llama-server)
+  function _taskPanelSyncFromTodoWrite(todos) {
+    if (!todos || todos.length === 0) return;
+    // Se já existe um plano pré-construído, NÃO sobrescrever com os todos internos da LLM.
+    // Os todos internos podem chegar com status 'completed' prematuramente e causam bugs.
+    if (_plan) return;
+    // Fallback: construir painel a partir dos todos do TodoWrite quando não há plano
+    _plan = todos.map(t => t.content || t.activeForm || '');
+    _planNevNextSeen = 0;
+    _taskPanelBuild(_plan);
+    if (taskPanel) taskPanel.classList.add('visible');
+  }
+
+  function _taskClear(delay) {
+    if (!delay) {
+      if (taskPanel) { taskPanel.classList.remove('visible', 'collapsed', 'done'); taskPanel.innerHTML = ''; }
+      _plan = null; _planPrebuilt = false; _planNevNextSeen = 0; _hadError = false;
+      return;
+    }
+    if (_taskClearTimer) clearTimeout(_taskClearTimer);
+    _taskClearTimer = setTimeout(() => {
+      if (taskPanel) { taskPanel.classList.remove('visible', 'collapsed', 'done'); taskPanel.innerHTML = ''; }
+      _plan = null; _planPrebuilt = false; _planNevNextSeen = 0; _hadError = false;
+      _taskClearTimer = null;
+    }, delay);
+  }
+
+  function _taskPanelMarkDone() {
+    if (!taskPanel) return;
+    // Mark remaining active/pending as done
+    const list = document.getElementById('taskList');
+    if (list) {
+      list.querySelectorAll('.task-item.pending, .task-item.active').forEach(item => {
+        item.className = 'task-item done';
+        const icon = item.querySelector('.task-item-icon');
+        if (icon) icon.innerHTML = TASK_CHECK_SVG;
+      });
+    }
+    taskPanel.classList.add('done');
+  }
+
   /* ── File attachment state ── */
   // Array of { name, path, content }
   let _attachedFiles = [];
+  let _suggestedFile = null; // { name, path } from active editor
 
   function _renderChips() {
     if (!fileChipsRow) return;
     fileChipsRow.innerHTML = '';
     if (_attachedFiles.length === 0) {
-      fileChipsRow.classList.remove('has-chips');
+      // Show suggestion chip if available
+      if (_suggestedFile) {
+        const chip = document.createElement('div');
+        chip.className = 'file-chip-suggest';
+        chip.title = 'Clique para anexar: ' + _suggestedFile.path;
+        const safeName = _suggestedFile.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        chip.innerHTML =
+          '<span class="file-chip-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>' +
+          '<span class="file-chip-name">' + safeName + '</span>';
+        chip.addEventListener('click', () => {
+          vscode.postMessage({ type: 'pick_suggested_file', path: _suggestedFile.path, name: _suggestedFile.name });
+        });
+        fileChipsRow.appendChild(chip);
+        fileChipsRow.classList.remove('hidden', 'has-chips');
+      } else {
+        // Sem sugestão e sem anexos — oculta a linha completamente
+        fileChipsRow.classList.add('hidden');
+        fileChipsRow.classList.remove('has-chips');
+      }
       return;
     }
+    fileChipsRow.classList.remove('hidden');
     fileChipsRow.classList.add('has-chips');
     _attachedFiles.forEach((f, idx) => {
       const chip = document.createElement('div');
@@ -1360,43 +1576,87 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
     switch (msg.type) {
       case 'stream_start':
-        // Servidor começou a gerar — atualiza label do prefill mas mantém timer
+        _hadError = false;
+        if (_plan) {
+          // Active plan exists — preserve panel across tool-use turns, just reset cursor
+          _planNevNextSeen = 0;
+        } else {
+          _taskClear(0); // No active plan — clear any stale state
+        }
+        _planPrebuilt = false; // consume flag
         _showPrefill('Gerando resposta...');
         setStreaming(true);
         getOrCreateAssistantEl();
         break;
 
       case 'stream_delta': {
-        _hidePrefill(); // primeiro token chegou — esconde o indicador de prefill
+        _hidePrefill();
         setStatusLabel('Gerando...');
         const { textEl } = getOrCreateAssistantEl();
-        textEl.innerHTML = renderMarkdown(msg.text || '');
+        const _dt = msg.text || '';
+        if (_plan) _taskProcessNevNext(_dt);
+        textEl.innerHTML = renderMarkdown(_stripNevTags(_dt));
         scrollToBottom();
         break;
       }
 
-      case 'stream_end':
-        if (msg.text) {
+      case 'stream_end': {
+        const _et = msg.text || '';
+        if (_plan) _taskProcessNevNext(_et);
+        const _cleanEt = _stripNevTags(_et);
+        if (_cleanEt) {
           const { textEl } = getOrCreateAssistantEl();
-          textEl.innerHTML = renderMarkdown(msg.text);
+          textEl.innerHTML = renderMarkdown(_cleanEt);
         }
         finalizeAssistant();
         if (msg.final) {
           setStreaming(false);
+          if (msg.aborted) {
+            _taskClear(0); // abortado: limpa painel sem marcar concluído
+          } else if (_hadError) {
+            _taskCompleteActive(true);
+          } else if (_plan) {
+            // Só marcar done se há um plano ativo — evita marcar tudo no exit limpo
+            _taskPanelMarkDone();
+          }
         }
         scrollToBottom();
         break;
+      }
 
-      case 'tool_use':
-        appendToolCard(msg.toolUse);
+      case 'task_plan':
+        if (msg.tasks && msg.tasks.length >= 2) {
+          _plan = msg.tasks;
+          _planPrebuilt = true;
+          _planNevNextSeen = 0;
+          _taskPanelBuild(msg.tasks);
+        }
         break;
+
+      case 'clear_plan':
+        _taskClear(0);
+        break;
+
+      case 'tool_use': {
+        // Ferramentas internas — não exibir cards no chat (ainda são executadas)
+        const _hiddenTools = ['TodoWrite', 'TodoRead', 'AskUserQuestion', 'ExitPlanMode'];
+        if (msg.toolUse && !_hiddenTools.includes(msg.toolUse.name)) {
+          appendToolCard(msg.toolUse);
+        }
+        break;
+      }
 
       case 'tool_result':
         updateToolResult(msg.toolUseId, msg.content, msg.isError);
         break;
 
       case 'tool_input_ready':
-        updateToolInput(msg.toolUseId, msg.input, msg.name);
+        // Sync task panel first (always), then render input only for visible tools
+        if (msg.name === 'TodoWrite' && msg.input && Array.isArray(msg.input.todos)) {
+          _taskPanelSyncFromTodoWrite(msg.input.todos);
+        } else if (msg.name !== 'TodoRead' && msg.name !== 'AskUserQuestion' && msg.name !== 'ExitPlanMode') {
+          updateToolInput(msg.toolUseId, msg.input, msg.name);
+        }
         break;
 
       case 'tool_progress':
@@ -1435,6 +1695,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         break;
 
       case 'error':
+        _hadError = true;
         setStreaming(false);
         finalizeAssistant();
         appendStatusMessage('Erro: ' + (msg.message || 'Erro desconhecido'));
@@ -1446,9 +1707,15 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
       case 'init_config':
         if (msg.permissionMode) setPermMode(msg.permissionMode, false);
+        if (msg.model && modelLabel) {
+          const _s = String(msg.model).replace(/^claude-/, 'Claude ').replace(/-\d{8}$/, '').replace(/-/g, ' ');
+          modelLabel.textContent = _s.length > 22 ? _s.substring(0, 20) + '\u2026' : _s;
+        }
         break;
 
       case 'session_cleared':
+        _taskClear(0); // limpa painel da sessão anterior
+        setStreaming(false);
         messagesEl.innerHTML = '';
         if (welcomeEl) {
           messagesEl.appendChild(welcomeEl);
@@ -1461,6 +1728,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         break;
 
       case 'restore_messages':
+        _taskClear(0); // limpa painel de qualquer sessão anterior
+        setStreaming(false);
         hideWelcome();
         if (msg.messages) {
           const firstUser = msg.messages.find(m => m.role === 'user');
@@ -1468,30 +1737,30 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
           setChatTitle(_chatTitle);
           for (const m of msg.messages) {
             if (m.role === 'user') {
+              // Exibe o texto original — sem o bloco <task_plan> que foi injetado apenas para a IA
               appendUserMessage(m.text || '');
             } else if (m.role === 'assistant') {
               const { textEl } = getOrCreateAssistantEl();
               textEl.innerHTML = renderMarkdown(m.text || '');
               if (m.toolUses && m.toolUses.length > 0) {
+                const _hiddenRestoreTools = ['TodoWrite', 'TodoRead', 'AskUserQuestion', 'ExitPlanMode'];
                 for (const tu of m.toolUses) {
-                  var displayName = tu.name || 'Tool';
-                  var icon = '';
+                  if (_hiddenRestoreTools.includes(tu.name)) continue;
                   var inputPreview = '';
                   if (tu.input && typeof tu.input === 'object') {
                     inputPreview = tu.input.file_path || tu.input.path || tu.input.command || '';
                   }
-                  var card = appendToolCard({
+                  // appendToolCard já usa tu.input para construir o card completo;
+                  // NÃO chamar updateToolInput depois (causaria duplicação do path no header)
+                  appendToolCard({
                     id: tu.id,
                     name: tu.name,
-                    displayName: displayName,
-                    icon: icon,
+                    displayName: tu.displayName || tu.name || 'Tool',
+                    icon: tu.icon || '',
                     inputPreview: inputPreview,
                     input: tu.input,
                     status: tu.status || 'complete',
                   });
-                  if (tu.input) {
-                    updateToolInput(String(tu.id), tu.input, tu.name);
-                  }
                   if (tu.result !== undefined && tu.result !== null) {
                     updateToolResult(String(tu.id), tu.result, tu.isError || false);
                   } else {
@@ -1501,6 +1770,14 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
               }
               finalizeAssistant();
             }
+          }
+          // Restaurar painel de tarefas: pega o plano da última mensagem que tinha um
+          const lastWithPlan = [...msg.messages].reverse().find(m => m.role === 'user' && m.plan && m.plan.length >= 2);
+          if (lastWithPlan) {
+            _plan = lastWithPlan.plan;
+            _planNevNextSeen = 0;
+            _taskPanelBuild(_plan);
+            _taskPanelMarkDone();
           }
         }
         scrollToBottom();
@@ -1512,6 +1789,17 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         inputEl.focus();
         break;
 
+      case 'file_suggested':
+        _attachedFiles.push({ name: msg.name, path: msg.path, content: msg.content || '' });
+        _renderChips();
+        inputEl.focus();
+        break;
+
+      case 'suggest_file':
+        _suggestedFile = msg.name ? { name: msg.name, path: msg.path } : null;
+        if (_attachedFiles.length === 0) _renderChips();
+        break;
+
       case 'process_ready':
         break;
 
@@ -1521,6 +1809,23 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
       default:
         break;
+    }
+  });
+
+  // Request active file suggestion on first load
+  vscode.postMessage({ type: 'get_suggested_file' });
+
+  // Auto-focus input when webview becomes visible
+  window.addEventListener('focus', () => {
+    if (!sessionOverlay || !sessionOverlay.style.display || sessionOverlay.style.display === 'none') {
+      inputEl.focus();
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (!sessionOverlay || !sessionOverlay.style.display || sessionOverlay.style.display === 'none') {
+        setTimeout(() => inputEl.focus(), 50);
+      }
     }
   });
 

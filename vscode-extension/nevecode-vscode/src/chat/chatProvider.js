@@ -38,16 +38,25 @@ function getLaunchConfig() {
   // Append behavioral instructions via system prompt file (if present)
   const path = require('path');
   const fs = require('fs');
-  const promptFile = path.resolve(__dirname, '..', '..', '..', '..', 'nevecode-prompt-append.txt');
-  const extraArgs = fs.existsSync(promptFile)
-    ? ['--append-system-prompt-file', promptFile]
-    : [];
+  const os = require('os');
+  const internalPromptFile = path.resolve(__dirname, '..', 'plans-prompt.txt');
+  const userPromptFile = path.resolve(__dirname, '..', '..', '..', '..', 'nevecode-prompt-append.txt');
+  const parts = [];
+  if (fs.existsSync(internalPromptFile)) parts.push(fs.readFileSync(internalPromptFile, 'utf8').trim());
+  if (fs.existsSync(userPromptFile)) parts.push(fs.readFileSync(userPromptFile, 'utf8').trim());
+  let extraArgs = [];
+  if (parts.length > 0) {
+    const tmp = path.join(os.tmpdir(), 'neve-system-prompt.txt');
+    fs.writeFileSync(tmp, parts.join('\n\n'), 'utf8');
+    extraArgs = ['--append-system-prompt-file', tmp];
+  }
   return { command, cwd, env, permissionMode, extraArgs };
 }
 
 class ChatController {
-  constructor(sessionManager) {
+  constructor(sessionManager, globalState) {
     this._sessionManager = sessionManager;
+    this._globalState = globalState || null;
     this._process = null;
     this._webviews = new Set();
     this._accumulatedText = '';
@@ -59,7 +68,9 @@ class ChatController {
     this._thinkingTokens = 0;
     this._thinkingStartTime = null;
     this._currentBlockType = null;
-    this._lastModel = null;  // cache for new webviews
+    this._consecutiveToolErrors = 0; // loop breaker: abort after N consecutive tool errors
+    this._turnWatchdog = null;
+    this._lastModel = (globalState && globalState.get('neve.lastModel')) || null;
     this._onDidChangeState = new vscode.EventEmitter();
     this.onDidChangeState = this._onDidChangeState.event;
   }
@@ -131,17 +142,18 @@ class ChatController {
       this._broadcast({ type: 'status', content: '⚠ ' + text.split('\n')[0].trim() });
     });
     this._process.onExit(({ code }) => {
-      // Flush any remaining streamed text
-      if (this._streaming && this._accumulatedText) {
-        this._broadcast({ type: 'stream_end', text: this._accumulatedText, usage: null, final: true });
-      } else if (this._streaming) {
-        this._broadcast({ type: 'stream_end', text: '', usage: (this._lastResult || {}).usage || null, final: true });
+      this._clearTurnWatchdog();
+      if (this._streaming) {
+        // Process died mid-stream — flush and unblock the renderer
+        const text = this._accumulatedText;
+        const usage = (this._lastResult || {}).usage || null;
+        this._broadcast({ type: 'stream_end', text, usage, final: true });
+        this._streaming = false;
       } else {
-        // Process exited without ever streaming — still need to unblock the UI.
-        // Send a final stream_end so the renderer's isStreaming flag is cleared.
+        // Process exited cleanly (after 'result') or was killed via abort().
+        // Still send a stream_end so the renderer always unblocks isStreaming.
         this._broadcast({ type: 'stream_end', text: '', usage: null, final: true });
       }
-      this._streaming = false;
       this._accumulatedText = '';
       this._toolUses = [];
       this._lastResult = null;
@@ -175,10 +187,6 @@ class ChatController {
   }
 
   async sendMessage(text) {
-    // Keep the process alive for multi-turn — just send directly.
-    // The CLI maintains full session state (tools, history) across turns.
-    // Only restart if the process died unexpectedly mid-session (resume with
-    // current session id). If _currentSessionId is null, start fresh.
     if (!this._process || !this._process.running) {
       await this.startSession(
         this._currentSessionId
@@ -186,7 +194,81 @@ class ChatController {
           : {},
       );
     }
-    await this._doSend(text);
+    // Clear any panel/plan from the previous message before starting new round
+    this._broadcast({ type: 'clear_plan' });
+    // Phase 1: Generate task plan via local planning endpoint (fails gracefully)
+    let tasks = null;
+    try { tasks = await this._generatePlan(text); } catch {}
+
+    let sendText = text;
+    if (tasks && tasks.length >= 2) {
+      this._broadcast({ type: 'task_plan', tasks });
+      const planBlock = tasks.map((t, i) => (i + 1) + '. ' + t).join('\n');
+      sendText = text + '\n\n<task_plan>\n' + planBlock + '\n</task_plan>';
+    }
+    // Salva o texto original (limpo) + plano no histórico — sendText vai para a IA mas não para o display
+    this._messages.push({ role: 'user', text, plan: tasks && tasks.length >= 2 ? tasks : null });
+    // Injeta o diretório de trabalho do workspace para que a IA crie arquivos no lugar correto
+    const _wsf = vscode.workspace.workspaceFolders;
+    if (_wsf && _wsf.length > 0) {
+      sendText = '[diretório de trabalho: ' + _wsf[0].uri.fsPath + ']\n\n' + sendText;
+    }
+    // Phase 2: Execute via openclaude with optional plan injected
+    await this._doSend(sendText);
+  }
+
+  async _generatePlan(userText) {
+    const path = require('path');
+    const fs = require('fs');
+    const cfg = vscode.workspace.getConfiguration('nevecode');
+    const planningUrl = cfg.get('planningUrl', 'http://localhost:8080/v1/chat/completions');
+    const planningPromptFile = path.resolve(__dirname, '..', 'planning-prompt.txt');
+    if (!fs.existsSync(planningPromptFile)) return null;
+    const systemPrompt = fs.readFileSync(planningPromptFile, 'utf8').trim();
+    const body = JSON.stringify({
+      model: 'local',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userText },
+      ],
+      temperature: 0.3,
+      max_tokens: 400,
+      stream: false,
+    });
+    return new Promise((resolve) => {
+      try {
+        const url = new URL(planningUrl);
+        const lib = url.protocol === 'https:' ? require('https') : require('http');
+        const opts = {
+          hostname: url.hostname,
+          port: parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80),
+          path: url.pathname + (url.search || ''),
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+          timeout: 4000,
+        };
+        const req = lib.request(opts, (res) => {
+          let data = '';
+          res.on('data', c => { data += c; });
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              const content = json.choices?.[0]?.message?.content || '';
+              const ps = content.indexOf('<nevplan>');
+              const pe = content.indexOf('</nevplan>');
+              if (ps === -1 || pe <= ps) { resolve(null); return; }
+              const inner = content.slice(ps + 9, pe);
+              const tasks = inner.split('\n').map(l => l.replace(/^[-*\d.\s]+/, '').trim()).filter(Boolean);
+              resolve(tasks.length >= 2 ? tasks : null);
+            } catch { resolve(null); }
+          });
+        });
+        req.on('error', () => resolve(null));
+        req.on('timeout', () => { req.destroy(); resolve(null); });
+        req.write(body);
+        req.end();
+      } catch { resolve(null); }
+    });
   }
 
   async _doSend(text) {
@@ -201,17 +283,40 @@ class ChatController {
     this._accumulatedText = '';
     this._toolUses = [];
     try {
+      this._startTurnWatchdog();
       this._process.sendUserMessage(text);
-      this._messages.push({ role: 'user', text });
+      // Nota: mensagem de usuário já foi adicionada a _messages em sendMessage() com texto limpo
     } catch (err) {
+      this._clearTurnWatchdog();
       this._broadcast({ type: 'error', message: err.message });
+    }
+  }
+
+  _startTurnWatchdog() {
+    this._clearTurnWatchdog();
+    this._turnWatchdog = setTimeout(() => {
+      this._turnWatchdog = null;
+      this._broadcast({ type: 'error', message: 'Abortado: a geração ficou sem resposta por tempo demais.' });
+      this.abort();
+    }, 120000);
+  }
+
+  _clearTurnWatchdog() {
+    if (this._turnWatchdog) {
+      clearTimeout(this._turnWatchdog);
+      this._turnWatchdog = null;
     }
   }
 
   abort() {
     if (this._process) {
+      this._clearTurnWatchdog();
       this._process.kill(); // SIGTERM — imediato
-      this._broadcast({ type: 'stream_end', text: this._accumulatedText, usage: null, final: true });
+      // Mark streaming as done BEFORE onExit fires, so onExit won't double-broadcast.
+      const text = this._accumulatedText;
+      this._streaming = false;
+      this._accumulatedText = '';
+      this._broadcast({ type: 'stream_end', text, usage: null, final: true, aborted: true });
       this._onDidChangeState.fire('idle');
     }
   }
@@ -252,7 +357,10 @@ class ChatController {
 
     // System message — extract model and session info
     if (msg.type === 'system') {
-      if (msg.model) this._lastModel = msg.model;
+      if (msg.model) {
+        this._lastModel = msg.model;
+        if (this._globalState) this._globalState.update('neve.lastModel', msg.model);
+      }
       this._broadcast({
         type: 'system_info',
         model: msg.model || null,
@@ -342,6 +450,19 @@ class ChatController {
               content: resultText.slice(0, 2000) || '(done)',
               isError: block.is_error || false,
             });
+            // Loop breaker: track consecutive tool errors
+            if (block.is_error) {
+              this._consecutiveToolErrors++;
+              if (this._consecutiveToolErrors >= 3) {
+                this._consecutiveToolErrors = 0;
+                const errMsg = 'Abortado: 3 erros consecutivos de ferramenta. Tente reformular a tarefa.';
+                this._broadcast({ type: 'error', message: errMsg });
+                this.abort();
+                return;
+              }
+            } else {
+              this._consecutiveToolErrors = 0;
+            }
           }
         }
       }
@@ -354,6 +475,7 @@ class ChatController {
     // Note: we match on type === 'result' without requiring msg.subtype to be
     // truthy — some CLI versions emit result without a subtype field.
     if (msg.type === 'result') {
+      this._clearTurnWatchdog();
       this._lastResult = msg;
       // For error subtypes, surface the error message to the user
       if (msg.subtype === 'error') {
@@ -522,6 +644,27 @@ class NeveCodeChatViewProvider {
       if (this._webviewView === webviewView) this._webviewView = null;
     });
 
+    // Send active file suggestion when view becomes visible
+    const sendActiveFile = () => {
+      if (!webviewView.visible) return;
+      // Só atualiza a sugestão quando de fato há um editor de arquivo ativo.
+      // Se não há editor ativo (foco fora do editor), mantém a sugestão anterior intacta
+      // para evitar que findFiles() retorne um arquivo aleatório do workspace.
+      const editor = vscode.window.activeTextEditor;
+      if (editor && editor.document.uri.scheme === 'file') {
+        const uri = editor.document.uri;
+        webview.postMessage({
+          type: 'suggest_file',
+          name: uri.path.split('/').pop() || uri.fsPath.split(/[\\/]/).pop(),
+          path: uri.fsPath,
+        });
+      }
+      // Sem editor ativo → não faz nada; a sugestão atual permanece
+    };
+
+    webviewView.onDidChangeVisibility(() => { if (webviewView.visible) sendActiveFile(); });
+    vscode.window.onDidChangeActiveTextEditor(() => sendActiveFile());
+
     webview.html = this._getHtml(webview);
     this._attachMessageHandler(webview);
   }
@@ -582,6 +725,22 @@ class NeveCodeChatViewProvider {
             await vscode.workspace.getConfiguration('nevecode').update('permissionMode', msg.mode, vscode.ConfigurationTarget.Global);
           }
           break;
+        case 'get_suggested_file':
+          NeveCodeChatViewProvider._sendActiveFileSuggestion(webview);
+          break;
+        case 'pick_suggested_file': {
+          if (msg.path) {
+            let content = '';
+            try {
+              const uri = vscode.Uri.file(msg.path);
+              const bytes = await vscode.workspace.fs.readFile(uri);
+              content = Buffer.from(bytes).toString('utf8');
+              if (content.length > 20000) content = content.slice(0, 20000) + '\n... (truncado)';
+            } catch {}
+            webview.postMessage({ type: 'file_suggested', name: msg.name, path: msg.path, content });
+          }
+          break;
+        }
         case 'pick_file': {
           const folders = vscode.workspace.workspaceFolders;
           const uris = await vscode.window.showOpenDialog({
@@ -607,11 +766,45 @@ class NeveCodeChatViewProvider {
           }
           break;
         }
-        case 'webview_ready':
+        case 'webview_ready': {
           webview.postMessage({ type: 'init_config', permissionMode: vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'acceptEdits') });
+          const cachedModel = this._chatController._lastModel;
+          if (cachedModel) webview.postMessage({ type: 'system_info', model: cachedModel });
+          NeveCodeChatViewProvider._sendActiveFileSuggestion(webview);
           break;
+        }
       }
     });
+  }
+
+  static _sendActiveFileSuggestion(webview) {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.uri.scheme === 'file') {
+      const uri = editor.document.uri;
+      webview.postMessage({
+        type: 'suggest_file',
+        name: uri.path.split('/').pop() || uri.fsPath.split(/[\\/]/).pop(),
+        path: uri.fsPath,
+      });
+      return;
+    }
+    // Sem editor ativo — busca o primeiro arquivo do workspace como fallback
+    vscode.workspace.findFiles('**/*.{ts,js,tsx,jsx,py,html,css,json,md,txt,yaml,yml,env}', '**/node_modules/**', 5)
+      .then(files => {
+        if (files && files.length > 0) {
+          const uri = files[0];
+          webview.postMessage({
+            type: 'suggest_file',
+            name: uri.path.split('/').pop() || uri.fsPath.split(/[\\/]/).pop(),
+            path: uri.fsPath,
+          });
+        } else {
+          webview.postMessage({ type: 'suggest_file', name: null, path: null });
+        }
+      })
+      .then(undefined, () => {
+        webview.postMessage({ type: 'suggest_file', name: null, path: null });
+      });
   }
 
   async _sendSessionList(webview) {
@@ -761,9 +954,16 @@ class NeveCodeChatPanelManager {
           }
           break;
         }
-        case 'webview_ready':
-          webview.postMessage({ type: 'init_config', permissionMode: vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'acceptEdits') });
+        case 'get_suggested_file':
+          NeveCodeChatViewProvider._sendActiveFileSuggestion(webview);
           break;
+        case 'webview_ready': {
+          webview.postMessage({ type: 'init_config', permissionMode: vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'acceptEdits') });
+          const cachedModel = this._chatController._lastModel;
+          if (cachedModel) webview.postMessage({ type: 'system_info', model: cachedModel });
+          NeveCodeChatViewProvider._sendActiveFileSuggestion(webview);
+          break;
+        }
       }
     });
   }

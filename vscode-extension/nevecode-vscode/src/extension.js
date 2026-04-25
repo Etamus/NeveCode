@@ -1054,7 +1054,7 @@ function activate(context) {
     sessionManager.setCwd(folders[0].uri.fsPath);
   }
 
-  const chatController = new ChatController(sessionManager);
+  const chatController = new ChatController(sessionManager, context.globalState);
   const chatViewProvider = new NeveCodeChatViewProvider(chatController, context.extensionUri);
   const chatPanelManager = new NeveCodeChatPanelManager(chatController, context.extensionUri);
 
