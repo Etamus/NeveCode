@@ -1035,8 +1035,11 @@ class NeveCodeChatViewProvider {
         case 'resume_session':
           this._chatController.stopSession();
           webview.postMessage({ type: 'session_cleared' });
-          await this._loadAndDisplaySession(webview, msg.sessionId);
-          await this._chatController.startSession({ sessionId: msg.sessionId });
+          if (await this._loadAndDisplaySession(webview, msg.sessionId)) {
+            await this._chatController.startSession({ sessionId: msg.sessionId });
+          } else {
+            await this._sendSessionList(webview);
+          }
           break;
         case 'permission_response':
           this._chatController.sendPermissionResponse(msg.requestId, msg.action, msg.toolUseId);
@@ -1058,7 +1061,11 @@ class NeveCodeChatViewProvider {
           break;
         case 'delete_session':
           if (this._chatController.sessionManager && msg.sessionId) {
-            await this._chatController.sessionManager.deleteSession(msg.sessionId);
+            const deleted = await this._chatController.sessionManager.deleteSession(msg.sessionId);
+            if (deleted && this._chatController.sessionId === msg.sessionId) {
+              this._chatController.stopSession();
+              webview.postMessage({ type: 'session_cleared' });
+            }
             await this._sendSessionList(webview);
           }
           break;
@@ -1173,14 +1180,17 @@ class NeveCodeChatViewProvider {
   }
 
   async _loadAndDisplaySession(webview, sessionId) {
-    if (!this._chatController.sessionManager) return;
+    if (!this._chatController.sessionManager) return false;
     try {
       const messages = await this._chatController.sessionManager.loadSession(sessionId);
       if (messages && messages.length > 0) {
         this._chatController._messages = messages;
         webview.postMessage({ type: 'restore_messages', messages });
+        return true;
       }
     } catch { /* session may not be loadable */ }
+    webview.postMessage({ type: 'session_cleared' });
+    return false;
   }
 }
 
@@ -1248,8 +1258,11 @@ class NeveCodeChatPanelManager {
         case 'resume_session':
           this._chatController.stopSession();
           webview.postMessage({ type: 'session_cleared' });
-          await this._loadAndDisplaySession(webview, msg.sessionId);
-          await this._chatController.startSession({ sessionId: msg.sessionId });
+          if (await this._loadAndDisplaySession(webview, msg.sessionId)) {
+            await this._chatController.startSession({ sessionId: msg.sessionId });
+          } else {
+            await this._sendSessionList(webview);
+          }
           break;
         case 'permission_response':
           this._chatController.sendPermissionResponse(msg.requestId, msg.action, msg.toolUseId);
@@ -1271,7 +1284,11 @@ class NeveCodeChatPanelManager {
           break;
         case 'delete_session':
           if (this._chatController.sessionManager && msg.sessionId) {
-            await this._chatController.sessionManager.deleteSession(msg.sessionId);
+            const deleted = await this._chatController.sessionManager.deleteSession(msg.sessionId);
+            if (deleted && this._chatController.sessionId === msg.sessionId) {
+              this._chatController.stopSession();
+              webview.postMessage({ type: 'session_cleared' });
+            }
             await this._sendSessionList(webview);
           }
           break;
@@ -1343,14 +1360,17 @@ class NeveCodeChatPanelManager {
   }
 
   async _loadAndDisplaySession(webview, sessionId) {
-    if (!this._chatController.sessionManager) return;
+    if (!this._chatController.sessionManager) return false;
     try {
       const messages = await this._chatController.sessionManager.loadSession(sessionId);
       if (messages && messages.length > 0) {
         this._chatController._messages = messages;
         webview.postMessage({ type: 'restore_messages', messages });
+        return true;
       }
     } catch { /* session may not be loadable */ }
+    webview.postMessage({ type: 'session_cleared' });
+    return false;
   }
 
   dispose() {

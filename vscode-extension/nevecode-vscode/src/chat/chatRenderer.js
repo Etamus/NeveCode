@@ -770,6 +770,20 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   let _prefillStart = 0;
   let currentAssistantEl = null;
   let currentTextEl = null;
+  let _activeVisualToolId = null;
+  let _toolRevealTimer = null;
+  const _toolDisplayQueue = [];
+  const _pendingToolResults = new Map();
+
+  function resetToolVisualQueue() {
+    _activeVisualToolId = null;
+    _toolDisplayQueue.length = 0;
+    _pendingToolResults.clear();
+    if (_toolRevealTimer) {
+      clearTimeout(_toolRevealTimer);
+      _toolRevealTimer = null;
+    }
+  }
   const toolResultMap = {};
 
   /* ── Markdown renderer ── */
@@ -1104,11 +1118,51 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       if (!card.classList.contains('no-output')) card.classList.toggle('expanded');
     });
     container.appendChild(card);
+    if ((toolUse.status || 'running') === 'running') {
+      _activeVisualToolId = String(toolUse.id || '');
+    }
     scrollToBottom();
     return card;
   }
 
+  function revealNextQueuedTool() {
+    if (_activeVisualToolId || _toolRevealTimer || _toolDisplayQueue.length === 0) return;
+    _toolRevealTimer = setTimeout(() => {
+      _toolRevealTimer = null;
+      if (_activeVisualToolId || _toolDisplayQueue.length === 0) return;
+      const next = _toolDisplayQueue.shift();
+      appendToolCard(next);
+      const nextId = String(next.id || '');
+      const pending = _pendingToolResults.get(nextId);
+      if (pending) {
+        _pendingToolResults.delete(nextId);
+        setTimeout(() => updateToolResult(nextId, pending.content, pending.isError), 450);
+      }
+    }, 180);
+  }
+
+  function appendToolCardSequential(toolUse) {
+    const id = String(toolUse.id || '');
+    if (_activeVisualToolId) {
+      _toolDisplayQueue.push(toolUse);
+      return null;
+    }
+    const card = appendToolCard(toolUse);
+    const pending = _pendingToolResults.get(id);
+    if (pending) {
+      _pendingToolResults.delete(id);
+      setTimeout(() => updateToolResult(id, pending.content, pending.isError), 450);
+    }
+    return card;
+  }
+
   function updateToolResult(toolUseId, content, isError) {
+    if (!document.querySelector('[data-tool-id="' + toolUseId + '"]')) {
+      if (_toolDisplayQueue.some(t => String(t.id || '') === String(toolUseId))) {
+        _pendingToolResults.set(String(toolUseId), { content, isError });
+      }
+      return;
+    }
     const outputEl = document.querySelector('[data-tool-output="' + toolUseId + '"]');
     if (outputEl) {
       outputEl.textContent = content || '(concluído)';
@@ -1123,6 +1177,10 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       }
       // Output arrived — enable expand (user can click to open)
       card.classList.remove('no-output');
+    }
+    if (_activeVisualToolId === String(toolUseId)) {
+      _activeVisualToolId = null;
+      revealNextQueuedTool();
     }
   }
 
@@ -1334,6 +1392,11 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     sessionList.querySelectorAll('.session-delete-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
+        const item = btn.closest('.session-item');
+        if (item) item.remove();
+        if (!sessionList.querySelector('.session-item')) {
+          sessionList.innerHTML = '<div class="session-empty">Nenhuma sessão encontrada</div>';
+        }
         vscode.postMessage({ type: 'delete_session', sessionId: btn.dataset.deleteId });
       });
     });
@@ -1823,13 +1886,18 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         // Ferramentas internas — não exibir cards no chat (ainda são executadas)
         const _hiddenTools = ['TodoWrite', 'TodoRead', 'AskUserQuestion', 'ExitPlanMode'];
         if (msg.toolUse && !_hiddenTools.includes(msg.toolUse.name)) {
-          appendToolCard(msg.toolUse);
+          appendToolCardSequential(msg.toolUse);
         }
         break;
       }
 
       case 'tool_result':
-        updateToolResult(msg.toolUseId, msg.content, msg.isError);
+        {
+          const _hiddenToolResults = ['TodoWrite', 'TodoRead', 'AskUserQuestion', 'ExitPlanMode'];
+          if (!_hiddenToolResults.includes(msg.toolName)) {
+            updateToolResult(msg.toolUseId, msg.content, msg.isError);
+          }
+        }
         _taskAdvanceForToolResult(msg.toolName, msg.isError);
         break;
 
@@ -1902,6 +1970,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       case 'session_cleared':
         _taskClear(0); // limpa painel da sessão anterior
         clearChangeReview();
+        resetToolVisualQueue();
         setStreaming(false);
         messagesEl.innerHTML = '';
         if (welcomeEl) {
@@ -1917,6 +1986,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       case 'restore_messages':
         _taskClear(0); // limpa painel de qualquer sessão anterior
         clearChangeReview();
+        resetToolVisualQueue();
         setStreaming(false);
         hideWelcome();
         if (msg.messages) {
