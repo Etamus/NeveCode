@@ -78,6 +78,17 @@ type SecretValueSource = Partial<{
 }>
 
 const GITHUB_COPILOT_BASE = 'https://api.githubcopilot.com'
+const REMOTE_STREAM_IDLE_TIMEOUT_MS = 120_000
+const LOCAL_STREAM_IDLE_TIMEOUT_MS = 300_000
+
+function getStreamIdleTimeoutMs(isLocal: boolean): number {
+  const raw = process.env.NEVECODE_STREAM_IDLE_TIMEOUT_MS
+  if (raw && /^\d+$/.test(raw)) {
+    const parsed = Number(raw)
+    if (parsed > 0) return parsed
+  }
+  return isLocal ? LOCAL_STREAM_IDLE_TIMEOUT_MS : REMOTE_STREAM_IDLE_TIMEOUT_MS
+}
 const GITHUB_429_MAX_RETRIES = 3
 const GITHUB_429_BASE_DELAY_SEC = 1
 const GITHUB_429_MAX_DELAY_SEC = 32
@@ -836,6 +847,7 @@ function repairPossiblyTruncatedObjectJson(raw: string): string | null {
 async function* openaiStreamToAnthropic(
   response: Response,
   model: string,
+  streamIdleTimeoutMs: number,
   signal?: AbortSignal,
 ): AsyncGenerator<AnthropicStreamEvent> {
   const messageId = makeMessageId()
@@ -883,12 +895,11 @@ async function* openaiStreamToAnthropic(
 
   const decoder = new TextDecoder()
   let buffer = ''
-  const STREAM_IDLE_TIMEOUT_MS = 120_000 // 2 minutes without data = connection likely dead
   let lastDataTime = Date.now()
 
   /**
    * Read from the stream with an idle timeout. If no data arrives within
-   * STREAM_IDLE_TIMEOUT_MS, assume the connection is dead and throw so
+    * streamIdleTimeoutMs, assume the connection is dead and throw so
    * withRetry can reconnect. This prevents indefinite hangs on stale
    * SSE connections from OpenAI/Gemini during long-running sessions.
    * Respects the caller's AbortSignal — clears the idle timer on abort
@@ -899,9 +910,9 @@ async function* openaiStreamToAnthropic(
       const timeoutId = setTimeout(() => {
         const elapsed = Math.round((Date.now() - lastDataTime) / 1000)
         reject(new Error(
-          `OpenAI/Gemini SSE stream idle for ${elapsed}s (limit: ${STREAM_IDLE_TIMEOUT_MS / 1000}s). Connection likely dropped.`,
+          `OpenAI/Gemini SSE stream idle for ${elapsed}s (limit: ${streamIdleTimeoutMs / 1000}s). Connection likely dropped.`,
         ))
-      }, STREAM_IDLE_TIMEOUT_MS)
+      }, streamIdleTimeoutMs)
 
       // If the caller aborts, clear the timer so the AbortError surfaces
       // cleanly instead of being masked by a spurious idle timeout.
@@ -1283,10 +1294,12 @@ class OpenAIShimMessages {
 
       if (params.stream) {
         const isResponsesStream = response.url?.includes('/responses')
+        const isLocalStream = isLocalProviderUrl(request.baseUrl)
+        const streamIdleTimeoutMs = getStreamIdleTimeoutMs(isLocalStream)
         return new OpenAIShimStream(
           (request.transport === 'codex_responses' || isResponsesStream)
             ? codexStreamToAnthropic(response, request.resolvedModel, options?.signal)
-            : openaiStreamToAnthropic(response, request.resolvedModel, options?.signal),
+            : openaiStreamToAnthropic(response, request.resolvedModel, streamIdleTimeoutMs, options?.signal),
         )
       }
 

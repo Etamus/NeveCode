@@ -27,6 +27,9 @@ async function openFileInEditor(filePath) {
 const CHANGE_SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024;
 const CHANGE_SNAPSHOT_MAX_FILES = 6000;
 const CHANGE_SNAPSHOT_EXCLUDE = '**/{.git,node_modules,dist,llama-bin,models,.venv,venv,__pycache__,coverage,out,build}/**';
+const PLANNING_REQUEST_TIMEOUT_MS = 12000;
+const INITIAL_TURN_WATCHDOG_MS = 180000;
+const ACTIVE_TURN_WATCHDOG_MS = 300000;
 
 function getWorkspaceRoot() {
   const folders = vscode.workspace.workspaceFolders;
@@ -173,6 +176,7 @@ class ChatController {
     this._currentBlockType = null;
     this._consecutiveToolErrors = 0; // loop breaker: abort after N consecutive tool errors
     this._turnWatchdog = null;
+    this._turnWatchdogPhase = null;
     this._lastModel = (globalState && globalState.get('neve.lastModel')) || null;
     this._changeSnapshot = null;
     this._pendingCheckpoint = null;
@@ -421,7 +425,7 @@ class ChatController {
           path: url.pathname + (url.search || ''),
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-          timeout: 4000,
+          timeout: PLANNING_REQUEST_TIMEOUT_MS,
         };
         const req = lib.request(opts, (res) => {
           let data = '';
@@ -469,13 +473,30 @@ class ChatController {
     }
   }
 
-  _startTurnWatchdog() {
+  _startTurnWatchdog(phase = 'initial') {
     this._clearTurnWatchdog();
+    this._turnWatchdogPhase = phase;
+    const timeoutMs = phase === 'initial' ? INITIAL_TURN_WATCHDOG_MS : ACTIVE_TURN_WATCHDOG_MS;
     this._turnWatchdog = setTimeout(() => {
+      const currentPhase = this._turnWatchdogPhase;
       this._turnWatchdog = null;
-      this._broadcast({ type: 'error', message: 'Abortado: a geração ficou sem resposta por tempo demais.' });
+      this._turnWatchdogPhase = null;
+      this._broadcast({
+        type: 'error',
+        message: currentPhase === 'initial'
+          ? 'Abortado: a geração não enviou resposta inicial por tempo demais.'
+          : 'Abortado: a geração ficou sem atividade por tempo demais.',
+      });
       this.abort();
-    }, 180000);
+    }, timeoutMs);
+  }
+
+  _noteTurnActivity() {
+    if (!this._turnWatchdog) return;
+    // Depois do primeiro sinal de vida, a geração passa para o watchdog ativo:
+    // qualquer stream/tool/status válido renova a janela sem confundir com
+    // ausência total de resposta inicial.
+    this._startTurnWatchdog('active');
   }
 
   _clearTurnWatchdog() {
@@ -483,6 +504,7 @@ class ChatController {
       clearTimeout(this._turnWatchdog);
       this._turnWatchdog = null;
     }
+    this._turnWatchdogPhase = null;
   }
 
   abort() {
@@ -654,6 +676,8 @@ class ChatController {
     if (msg.type === 'control_response') {
       return;
     }
+
+    this._noteTurnActivity();
 
     // System message — extract model and session info
     if (msg.type === 'system') {
