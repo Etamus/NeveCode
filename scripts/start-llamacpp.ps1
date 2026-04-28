@@ -3,9 +3,9 @@
 .SYNOPSIS
     Baixa (se necessário) e inicia o llama-server com suporte GPU.
 .DESCRIPTION
-    - Detecta CUDA ou usa Vulkan como fallback para GPU
+    - Detecta CUDA/NVIDIA VRAM e escolhe perfil de performance automaticamente
     - Baixa o binário standalone do llama.cpp caso não esteja presente
-    - Inicia llama-server com flash attention, KV q8_0, ctx=32768
+    - Inicia llama-server com flash attention, KV cache compacto e n_ctx adaptativo
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -143,6 +143,89 @@ function Test-PortListening([int]$p) {
     }
 }
 
+function Get-NvidiaVramGB {
+    try {
+        $raw = & nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1
+        if ($raw) { return [math]::Round(([double]($raw.ToString().Trim()) / 1024), 1) }
+    } catch {}
+    return $null
+}
+
+function Get-EnvInt([string]$name, [int]$fallback) {
+    $v = [Environment]::GetEnvironmentVariable($name)
+    if ($v -and ($v -match '^\d+$')) { return [int]$v }
+    return $fallback
+}
+
+function Resolve-LlamaProfile([double]$vramGB, [string]$modelPath) {
+    $requested = [Environment]::GetEnvironmentVariable('NEVECODE_PERFORMANCE_PROFILE')
+    if (-not $requested) { $requested = 'auto' }
+    $profile = $requested.ToLowerInvariant()
+    if ($profile -eq 'auto') {
+        if ($vramGB -and $vramGB -le 12.5) { $profile = '12gb-balanced' }
+        elseif ($vramGB -and $vramGB -le 16.5) { $profile = '16gb-balanced' }
+        else { $profile = 'large-context' }
+    }
+
+    switch ($profile) {
+        'fast' {
+            return @{ Name='fast'; Ctx=32768; Batch=1024; UBatch=256; CacheK='q4_0'; CacheV='q4_0' }
+        }
+        'balanced' {
+            if ($vramGB -and $vramGB -le 12.5) { return @{ Name='12gb-balanced'; Ctx=40960; Batch=1024; UBatch=256; CacheK='q4_0'; CacheV='q4_0' } }
+            return @{ Name='16gb-balanced'; Ctx=49152; Batch=1536; UBatch=512; CacheK='q4_0'; CacheV='q4_0' }
+        }
+        '12gb-balanced' {
+            # Mantém >=40k para o fluxo atual, mas reduz batch para caber em 12GB.
+            return @{ Name='12gb-balanced'; Ctx=40960; Batch=1024; UBatch=256; CacheK='q4_0'; CacheV='q4_0' }
+        }
+        '16gb-balanced' {
+            return @{ Name='16gb-balanced'; Ctx=49152; Batch=1536; UBatch=512; CacheK='q4_0'; CacheV='q4_0' }
+        }
+        'large-context' {
+            return @{ Name='large-context'; Ctx=65536; Batch=2048; UBatch=512; CacheK='q4_0'; CacheV='q4_0' }
+        }
+        'max-vram' {
+            return @{ Name='max-vram'; Ctx=49152; Batch=2048; UBatch=512; CacheK='q5_0'; CacheV='q5_0' }
+        }
+        default {
+            Write-Host "[llama.cpp] Perfil '$requested' desconhecido; usando 16gb-balanced." -ForegroundColor Yellow
+            return @{ Name='16gb-balanced'; Ctx=49152; Batch=1536; UBatch=512; CacheK='q4_0'; CacheV='q4_0' }
+        }
+    }
+}
+
+function Build-ServerArgs([string]$modelPath, [string]$modelAlias, [hashtable]$profile, [int]$ctxOverride) {
+    $ctx = if ($ctxOverride -gt 0) { $ctxOverride } else { Get-EnvInt 'NEVECODE_CTX_SIZE' $profile.Ctx }
+    $batch = Get-EnvInt 'NEVECODE_BATCH_SIZE' $profile.Batch
+    $ubatch = Get-EnvInt 'NEVECODE_UBATCH_SIZE' $profile.UBatch
+    $parallel = Get-EnvInt 'NEVECODE_PARALLEL' 1
+    $cacheK = [Environment]::GetEnvironmentVariable('NEVECODE_CACHE_TYPE_K'); if (-not $cacheK) { $cacheK = $profile.CacheK }
+    $cacheV = [Environment]::GetEnvironmentVariable('NEVECODE_CACHE_TYPE_V'); if (-not $cacheV) { $cacheV = $profile.CacheV }
+    $flashAttn = [Environment]::GetEnvironmentVariable('NEVECODE_FLASH_ATTN'); if (-not $flashAttn) { $flashAttn = 'on' }
+
+    $args = @(
+        '--model',             "`"$modelPath`"",
+        '--alias',             "`"$modelAlias`"",
+        '--port',              "$Port",
+        '--host',              '127.0.0.1',
+        '--n-gpu-layers',      '-1',
+        '--flash-attn',        $flashAttn,
+        '--cache-type-k',      $cacheK,
+        '--cache-type-v',      $cacheV,
+        '--ctx-size',          "$ctx",
+        '--batch-size',        "$batch",
+        '--ubatch-size',       "$ubatch",
+        '--reasoning-budget',  '0',
+        '--parallel',          "$parallel",
+        '--cont-batching'
+    )
+    if ([Environment]::GetEnvironmentVariable('NEVECODE_NO_MMAP') -eq '1') {
+        $args += '--no-mmap'
+    }
+    return $args
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 # 1. Verificar / instalar binário apenas se não estiver presente
@@ -194,44 +277,52 @@ Write-Host "[llama.cpp] Modelo: $modelPath" -ForegroundColor Cyan
 $modelAlias = [System.IO.Path]::GetFileNameWithoutExtension($modelPath)
 Write-Host "[llama.cpp] Alias: $modelAlias" -ForegroundColor Cyan
 
-# Monta argumentos do servidor
-# NOTAS:
-#   --flash-attn e flag booleana (sem valor - nao passe 'on')
-#   --cache-type q4_0: cache KV 4-bit (menor VRAM, prefill muito mais rapido)
-#   --batch-size 2048: processar prefill em lotes maiores (mais rapido)
-#   --no-mmap: evita page faults apos o modelo estar carregado
-#   --reasoning-budget 0: desabilita thinking no Qwen3 (evita respostas em branco)
-$serverArgs = @(
-    '--model',             "`"$modelPath`"",
-    '--alias',             "`"$modelAlias`"",
-    '--port',              "$Port",
-    '--host',              '127.0.0.1',
-    '--n-gpu-layers',      '-1',
-    '--flash-attn',        'on',
-    '--cache-type-k',      'q4_0',
-    '--cache-type-v',      'q4_0',
-    '--ctx-size',          '65536',
-    '--batch-size',        '2048',
-    '--ubatch-size',       '512',
-    '--reasoning-budget',  '0',
-    '--parallel',          '1',
-    '--cont-batching',
-    '--no-mmap'
-)
+$vramGB = Get-NvidiaVramGB
+if ($vramGB) { Write-Host "[llama.cpp] VRAM NVIDIA detectada: ${vramGB}GB" -ForegroundColor Green }
+else { Write-Host "[llama.cpp] VRAM NVIDIA nao detectada; usando perfil conservador." -ForegroundColor Yellow }
 
-Write-Host "[llama.cpp] Iniciando llama-server..." -ForegroundColor Cyan
+$profile = Resolve-LlamaProfile $vramGB $modelPath
+Write-Host "[llama.cpp] Perfil: $($profile.Name) (ctx alvo: $($profile.Ctx), batch: $($profile.Batch), ubatch: $($profile.UBatch), KV: $($profile.CacheK)/$($profile.CacheV))" -ForegroundColor Cyan
 
-$serverProc = Start-Process -FilePath $ServerExe -ArgumentList $serverArgs -WindowStyle Normal -PassThru
-
-# Aguarda ate 4s para detectar crash imediato
-$startTime = Get-Date
-while (((Get-Date) - $startTime).TotalSeconds -lt 4) {
-    if ($serverProc.HasExited) { break }
-    Start-Sleep -Milliseconds 200
+# Tenta manter >=40k por padrão. Se o modelo/VRAM não couber, reduz n_ctx automaticamente
+# em vez de falhar de cara. NEVECODE_CTX_SIZE fixa o valor e desativa fallback.
+$explicitCtx = Get-EnvInt 'NEVECODE_CTX_SIZE' 0
+if ($explicitCtx -gt 0) { $ctxCandidates = @($explicitCtx) }
+else {
+    $ctxCandidates = @($profile.Ctx, 49152, 40960, 32768, 24576) | Select-Object -Unique | Where-Object { $_ -le $profile.Ctx }
 }
 
-if ($serverProc.HasExited) {
-    Write-Host "[llama.cpp] ERRO: servidor encerrou imediatamente (codigo $($serverProc.ExitCode))." -ForegroundColor Red
+$serverProc = $null
+$serverArgs = $null
+$ready = $false
+foreach ($ctxTry in $ctxCandidates) {
+    $serverArgs = Build-ServerArgs $modelPath $modelAlias $profile $ctxTry
+    Write-Host "[llama.cpp] Iniciando llama-server (ctx=$ctxTry)..." -ForegroundColor Cyan
+    $serverProc = Start-Process -FilePath $ServerExe -ArgumentList $serverArgs -WindowStyle Normal -PassThru
+
+    # Aguarda porta ficar disponivel. Se cair antes disso, tenta ctx menor.
+    $deadline = (Get-Date).AddSeconds(240)
+    while ((Get-Date) -lt $deadline) {
+        if ($serverProc.HasExited) { break }
+        if (Test-PortListening $Port) {
+            $ready = $true
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    if ($ready) { break }
+    if ($serverProc -and -not $serverProc.HasExited) {
+        Write-Host "[llama.cpp] Porta nao abriu com ctx=$ctxTry; encerrando tentativa e reduzindo contexto..." -ForegroundColor Yellow
+        try { Stop-Process -Id $serverProc.Id -Force -ErrorAction SilentlyContinue } catch {}
+    } else {
+        Write-Host "[llama.cpp] Servidor caiu com ctx=$ctxTry (codigo $($serverProc.ExitCode)); tentando ctx menor..." -ForegroundColor Yellow
+    }
+    $serverProc = $null
+}
+
+if (-not $ready -or -not $serverProc -or $serverProc.HasExited) {
+    Write-Host "[llama.cpp] ERRO: servidor encerrou imediatamente em todos os perfis." -ForegroundColor Red
     Write-Host ""
     Write-Host "Re-executando para capturar mensagem de erro..." -ForegroundColor Yellow
 
@@ -256,27 +347,6 @@ if ($serverProc.HasExited) {
         Write-Host "Binario: $ServerExe" -ForegroundColor DarkGray
         Write-Host "Modelo : $modelPath" -ForegroundColor DarkGray
     }
-    exit 1
-}
-
-# Aguarda porta ficar disponivel (ate 300s)
-Write-Host "[llama.cpp] Aguardando porta $Port ficar disponivel..." -ForegroundColor Cyan
-$deadline = (Get-Date).AddSeconds(300)
-$ready = $false
-while ((Get-Date) -lt $deadline) {
-    if ($serverProc.HasExited) {
-        Write-Host "[llama.cpp] Servidor encerrou inesperadamente (codigo $($serverProc.ExitCode))." -ForegroundColor Red
-        exit 1
-    }
-    if (Test-PortListening $Port) {
-        $ready = $true
-        break
-    }
-    Start-Sleep -Milliseconds 500
-}
-
-if (-not $ready) {
-    Write-Error "llama-server nao ficou disponivel em 300 segundos."
     exit 1
 }
 

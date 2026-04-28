@@ -1,5 +1,5 @@
 /**
- * ProcessManager — spawns OpenClaude in print/SDK mode and manages the
+ * ProcessManager — spawns NeveCode in print/SDK mode and manages the
  * NDJSON stdin/stdout lifecycle.
  *
  * Usage:
@@ -14,14 +14,14 @@
  *   pm.dispose();
  */
 
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const vscode = require('vscode');
 const { parseStdoutLine, serializeStdinMessage, buildUserMessage, buildControlResponse } = require('./protocol');
 
 class ProcessManager {
   /**
    * @param {object} opts
-   * @param {string} opts.command - The openclaude binary (e.g. 'openclaude')
+   * @param {string} opts.command - The nevecode binary (e.g. 'nevecode')
    * @param {string} [opts.cwd] - Working directory
    * @param {Record<string,string>} [opts.env] - Extra env vars
    * @param {string} [opts.sessionId] - Session to resume
@@ -30,13 +30,13 @@ class ProcessManager {
    * @param {string[]} [opts.extraArgs] - Additional CLI flags
    */
   constructor(opts) {
-    this._command = opts.command || 'openclaude';
+    this._command = opts.command || 'nevecode';
     this._cwd = opts.cwd || undefined;
     this._env = opts.env || {};
     this._sessionId = opts.sessionId || null;
     this._continueSession = opts.continueSession || false;
     this._model = opts.model || null;
-    this._permissionMode = opts.permissionMode || 'acceptEdits';
+    this._permissionMode = opts.permissionMode || 'default';
     this._extraArgs = opts.extraArgs || [];
     this._process = null;
     this._buffer = '';
@@ -64,14 +64,21 @@ class ProcessManager {
     if (this._disposed) throw new Error('ProcessManager is disposed');
     if (this._process) throw new Error('Process already started');
 
+    const effectivePermissionMode = this._permissionMode === 'acceptEdits' ? 'default' : (this._permissionMode || 'default');
     const args = [
       '--print',
       '--verbose',
       '--input-format=stream-json',
       '--output-format=stream-json',
       '--include-partial-messages',
-      '--permission-mode', this._permissionMode || 'acceptEdits',
+      '--permission-mode', effectivePermissionMode,
+      '--permission-prompt-tool', 'stdio',
     ];
+
+    if (effectivePermissionMode === 'bypassPermissions') {
+      args.push('--allow-dangerously-skip-permissions');
+      args.push('--dangerously-skip-permissions');
+    }
 
     if (this._sessionId) {
       args.push('--resume', this._sessionId);
@@ -168,6 +175,19 @@ class ProcessManager {
     this._write(buildControlResponse(requestId, result));
   }
 
+  setPermissionMode(mode) {
+    this._permissionMode = mode === 'acceptEdits' ? 'default' : (mode || 'default');
+    if (!this.running) return;
+    this.write({
+      type: 'control_request',
+      request_id: 'neve-permission-' + Date.now(),
+      request: {
+        subtype: 'set_permission_mode',
+        mode: this._permissionMode,
+      },
+    });
+  }
+
   write(msg) {
     if (!this._process || !this._process.stdin.writable) {
       throw new Error('Process is not running');
@@ -190,14 +210,26 @@ class ProcessManager {
   }
 
   kill() {
-    if (this._process && !this._process.killed) {
-      if (process.platform === 'win32' && this._process.pid) {
+    const proc = this._process;
+    if (proc && !proc.killed) {
+      if (process.platform === 'win32' && proc.pid) {
         // On Windows, kill(SIGTERM) only kills the cmd.exe shell, not the
-        // openclaude child process. Use taskkill /F /T to kill the whole tree.
-        const { exec } = require('child_process');
-        exec('taskkill /F /T /PID ' + this._process.pid, () => {});
+        // nevecode child process. Use synchronous taskkill /F /T so Stop
+        // really terminates the full tree before the UI continues.
+        try {
+          spawnSync('taskkill', ['/F', '/T', '/PID', String(proc.pid)], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+        } catch {}
+      } else {
+        try { proc.kill('SIGKILL'); } catch { try { proc.kill('SIGTERM'); } catch {} }
       }
-      this._process.kill('SIGTERM');
+      try { proc.stdin?.destroy(); } catch {}
+      try { proc.stdout?.destroy(); } catch {}
+      try { proc.stderr?.destroy(); } catch {}
+      try { proc.kill('SIGTERM'); } catch {}
+      this._process = null;
     }
   }
 

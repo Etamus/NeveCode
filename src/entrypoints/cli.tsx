@@ -8,7 +8,7 @@ import {
   validateProviderEnvForStartupOrExit,
 } from '../utils/providerValidation.js'
 
-// OpenClaude: polyfill globalThis.File for Node < 20.
+// NeveCode: polyfill globalThis.File for Node < 20.
 // undici v7 references `File` at module evaluation time (webidl type
 // assertions). Node 18 lacks the global, causing a ReferenceError inside
 // the bundled __commonJS require chain which deadlocks the process when a
@@ -36,7 +36,7 @@ if (typeof globalThis.File === 'undefined') {
   }
 }
 
-// OpenClaude: disable experimental API betas by default.
+// NeveCode: disable experimental API betas by default.
 // Tool search (defer_loading), global cache scope, and context management
 // require internal API support not available to external accounts → 500.
 // Users can opt-in with CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=false.
@@ -382,7 +382,7 @@ async function main(): Promise<void> {
   }
 
   // No special flags detected, load and run the full CLI
-  if (process.env.OPENCLAUDE_DISABLE_EARLY_INPUT !== '1') {
+  if (process.env.NEVECODE_DISABLE_EARLY_INPUT !== '1') {
     const {
       startCapturingEarlyInput
     } = await import('../utils/earlyInput.js');

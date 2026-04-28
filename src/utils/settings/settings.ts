@@ -300,9 +300,9 @@ export function getRelativeSettingsFilePathForSource(
 ): string {
   switch (source) {
     case 'projectSettings':
-      return '.openclaude/settings.json'
+      return '.nevecode/settings.json'
     case 'localSettings':
-      return '.openclaude/settings.local.json'
+      return '.nevecode/settings.local.json'
   }
 }
 

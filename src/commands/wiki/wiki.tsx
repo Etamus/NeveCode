@@ -12,7 +12,7 @@ import { getCwd } from '../../utils/cwd.js'
 function renderHelp(): string {
   return `Usage: /wiki [init|status|ingest <path>]
 
-Manage the OpenClaude project wiki stored in .openclaude/wiki.
+Manage the NeveCode project wiki stored in .nevecode/wiki.
 
 Commands:
   /wiki init    Initialize the wiki structure in the current project
@@ -26,7 +26,7 @@ Examples:
 }
 
 function formatInitResult(result: Awaited<ReturnType<typeof initializeWiki>>): string {
-  const lines = [`Initialized OpenClaude wiki at ${result.root}`]
+  const lines = [`Initialized NeveCode wiki at ${result.root}`]
 
   if (result.alreadyExisted) {
     lines.push('', 'Wiki already existed. No new files were created.')
@@ -45,11 +45,11 @@ function formatInitResult(result: Awaited<ReturnType<typeof initializeWiki>>): s
 
 function formatStatus(status: Awaited<ReturnType<typeof getWikiStatus>>): string {
   if (!status.initialized) {
-    return `OpenClaude wiki is not initialized in this project.\n\nRun /wiki init to create ${status.root}.`
+    return `NeveCode wiki is not initialized in this project.\n\nRun /wiki init to create ${status.root}.`
   }
 
   return [
-    'OpenClaude wiki status',
+    'NeveCode wiki status',
     '',
     `Root: ${status.root}`,
     `Pages: ${status.pageCount}`,
@@ -65,7 +65,7 @@ function formatIngestResult(
   result: Awaited<ReturnType<typeof ingestLocalWikiSource>>,
 ): string {
   return [
-    `Ingested ${result.sourceFile} into the OpenClaude wiki.`,
+    `Ingested ${result.sourceFile} into the NeveCode wiki.`,
     '',
     `Title: ${result.title}`,
     `Source note: ${result.sourceNote}`,

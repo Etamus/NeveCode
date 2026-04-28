@@ -41,7 +41,7 @@ function profile(profile: ProfileFile['profile'], env: ProfileFile['env']): Prof
   }
 }
 
-const missingCodexAuthPath = join(tmpdir(), 'openclaude-missing-codex-auth.json')
+const missingCodexAuthPath = join(tmpdir(), 'nevecode-missing-codex-auth.json')
 
 test('matching persisted ollama env is reused for ollama launch', async () => {
   const env = await buildLaunchEnv({
@@ -286,7 +286,7 @@ test('codex launch ignores placeholder codex env keys', async () => {
 })
 
 test('codex launch prefers auth account id over stale persisted value', async () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'openclaude-codex-'))
+  const codexHome = mkdtempSync(join(tmpdir(), 'nevecode-codex-'))
   try {
     writeFileSync(
       join(codexHome, 'auth.json'),
@@ -407,7 +407,7 @@ test('gemini profiles require a key', () => {
 })
 
 test('saveProfileFile writes a profile that loadProfileFile can read back', () => {
-  const cwd = mkdtempSync(join(tmpdir(), 'openclaude-profile-file-'))
+  const cwd = mkdtempSync(join(tmpdir(), 'nevecode-profile-file-'))
 
   try {
     const persisted = createProfileFile('openai', {
@@ -454,7 +454,7 @@ test('buildCodexProfileEnv tags OAuth-saved profiles so logout can remove them s
 })
 
 test('clearPersistedCodexOAuthProfile removes only persisted Codex OAuth profiles', async () => {
-  const cwd = mkdtempSync(join(tmpdir(), 'openclaude-codex-oauth-profile-'))
+  const cwd = mkdtempSync(join(tmpdir(), 'nevecode-codex-oauth-profile-'))
 
   try {
     const providerProfileModule = await import(
@@ -574,7 +574,7 @@ test('buildStartupEnvFromProfile leaves explicit provider selections untouched',
 
 test('buildStartupEnvFromProfile preserves plural-profile env when the legacy file is stale', async () => {
   // Regression: a user saves a provider via /provider (plural system).
-  // addProviderProfile does NOT sync the legacy .openclaude-profile.json,
+  // addProviderProfile does NOT sync the legacy .nevecode-profile.json,
   // so the legacy file retains whatever it had from an earlier setup (e.g.
   // OpenAI defaults). At startup, applyActiveProviderProfileFromConfig()
   // correctly applies the active plural profile (Moonshot) first, marking

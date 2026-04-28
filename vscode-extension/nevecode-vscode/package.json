@@ -31,6 +31,8 @@
     "src/extension.js",
     "src/presentation.js",
     "src/state.js",
+    "src/plans-prompt.txt",
+    "src/planning-prompt.txt",
     "src/chat/**",
     "themes/**"
   ],
@@ -127,15 +129,32 @@
         },
         "nevecode.permissionMode": {
           "type": "string",
-          "default": "acceptEdits",
-          "enum": ["default", "acceptEdits", "bypassPermissions", "plan"],
+          "default": "default",
+          "enum": ["default", "bypassPermissions"],
           "enumDescriptions": [
-            "Solicita permissão em cada uso de ferramenta (requer aprovação manual)",
-            "Aprova autom. edições de arquivos, solicita para outras operações (recomendado)",
-            "Aprova autom. todas as operações sem solicitar",
-            "Modo somente leitura — nenhuma modificação de arquivo permitida"
+            "Solicita confirmação para cada alteração",
+            "Acesso total: executa tudo sem pedir confirmação"
           ],
           "description": "Modo de permissão para sessões de chat. Controla quais operações de ferramentas são aprovadas automaticamente."
+        },
+        "nevecode.performanceProfile": {
+          "type": "string",
+          "default": "balanced",
+          "enum": ["fast", "balanced", "large-context"],
+          "description": "Perfil de custo/latência do agente. fast reduz tokens e planejamento; balanced é o padrão; large-context preserva mais orçamento para tarefas longas."
+        },
+        "nevecode.planningMode": {
+          "type": "string",
+          "default": "heuristic",
+          "enum": ["off", "heuristic", "llm"],
+          "description": "Como gerar o painel de tarefas. heuristic não chama LLM extra; llm usa o endpoint local; off desativa plano automático."
+        },
+        "nevecode.maxOutputTokens": {
+          "type": "number",
+          "default": 4096,
+          "minimum": 1024,
+          "maximum": 16000,
+          "description": "Limite padrão de tokens de saída para o CLI. Aumente apenas para respostas muito longas."
         }
       }
     },
@@ -161,7 +180,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Gitlawb/openclaude"
+    "url": "https://github.com/Gitlawb/nevecode"
   },
   "license": "MIT"
 }

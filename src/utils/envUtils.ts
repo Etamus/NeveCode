@@ -6,7 +6,7 @@ import { join } from 'path'
 export function resolveClaudeConfigHomeDir(options?: {
   configDirEnv?: string
   homeDir?: string
-  openClaudeExists?: boolean
+  neveCodeExists?: boolean
   legacyClaudeExists?: boolean
 }): string {
   if (options?.configDirEnv) {
@@ -14,20 +14,20 @@ export function resolveClaudeConfigHomeDir(options?: {
   }
 
   const homeDir = options?.homeDir ?? homedir()
-  const openClaudeDir = join(homeDir, '.openclaude')
+  const neveCodeDir = join(homeDir, '.nevecode')
   const legacyClaudeDir = join(homeDir, '.claude')
-  const openClaudeExists =
-    options?.openClaudeExists ?? existsSync(openClaudeDir)
+  const neveCodeExists =
+    options?.neveCodeExists ?? existsSync(neveCodeDir)
   const legacyClaudeExists =
     options?.legacyClaudeExists ?? existsSync(legacyClaudeDir)
 
   // Preserve existing user config/install state until we ship an explicit
-  // migration. New installs (neither path exists) use ~/.openclaude.
-  if (!openClaudeExists && legacyClaudeExists) {
+  // migration. New installs (neither path exists) use ~/.nevecode.
+  if (!neveCodeExists && legacyClaudeExists) {
     return legacyClaudeDir.normalize('NFC')
   }
 
-  return openClaudeDir.normalize('NFC')
+  return neveCodeDir.normalize('NFC')
 }
 
 // Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so

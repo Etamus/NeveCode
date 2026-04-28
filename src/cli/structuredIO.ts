@@ -550,6 +550,16 @@ export class StructuredIO {
           assistantMessage,
           toolUseID,
         ))
+      const permissionMode = toolUseContext.getAppState().toolPermissionContext.mode
+      const mustAskForEveryTool =
+        process.env.NEVECODE_REQUIRE_TOOL_APPROVAL === '1' &&
+        !forceDecision &&
+        permissionMode === 'default' &&
+        mainPermissionResult.behavior === 'allow'
+      if (mustAskForEveryTool) {
+        mainPermissionResult.behavior = 'ask'
+        mainPermissionResult.message = `Solicita confirmação para executar ${tool.name}`
+      }
       // If the tool is allowed or denied, return the result
       if (
         mainPermissionResult.behavior === 'allow' ||

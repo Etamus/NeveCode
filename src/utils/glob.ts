@@ -1,4 +1,6 @@
-import { basename, dirname, isAbsolute, join, sep } from 'path'
+import { readdir, stat } from 'fs/promises'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'path'
+import picomatch from 'picomatch'
 import type { ToolPermissionContext } from '../Tool.js'
 import { isEnvTruthy } from './envUtils.js'
 import {
@@ -7,7 +9,100 @@ import {
 } from './permissions/filesystem.js'
 import { getPlatform } from './platform.js'
 import { getGlobExclusionsForPluginCache } from './plugins/orphanedPluginFilter.js'
-import { ripGrep } from './ripgrep.js'
+import { ripGrep, RipgrepUnavailableError } from './ripgrep.js'
+
+const DEFAULT_NATIVE_EXCLUDED_DIRS = new Set([
+  '.git',
+  '.svn',
+  '.hg',
+  '.bzr',
+  '.jj',
+  '.sl',
+  'node_modules',
+  '.venv',
+  'venv',
+  '__pycache__',
+  'llama-bin',
+])
+
+function toSlashPath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
+function isRipgrepMissing(error: unknown): boolean {
+  return (
+    error instanceof RipgrepUnavailableError ||
+    (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT')
+  )
+}
+
+function normalizeExclusionPattern(pattern: string): string {
+  const withoutBang = pattern.startsWith('!') ? pattern.slice(1) : pattern
+  return toSlashPath(withoutBang.replace(/^\*\*\//, ''))
+}
+
+async function nativeGlobFallback(
+  searchDir: string,
+  searchPattern: string,
+  ignorePatterns: string[],
+  pluginExclusions: string[],
+  { limit, offset }: { limit: number; offset: number },
+  abortSignal: AbortSignal,
+  hidden: boolean,
+): Promise<{ files: string[]; truncated: boolean }> {
+  const matcher = picomatch(searchPattern, { dot: true, windows: false })
+  const ignoreMatchers = [...ignorePatterns, ...pluginExclusions]
+    .map(normalizeExclusionPattern)
+    .filter(Boolean)
+    .map(pattern => picomatch(pattern, { dot: true, windows: false }))
+  const matches: Array<{ path: string; mtimeMs: number }> = []
+
+  async function walk(dir: string): Promise<void> {
+    if (abortSignal.aborted) return
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (abortSignal.aborted) return
+      if (!hidden && entry.name.startsWith('.')) continue
+
+      const fullPath = join(dir, entry.name)
+      const relPath = toSlashPath(relative(searchDir, fullPath))
+      const baseName = entry.name
+
+      if (entry.isDirectory()) {
+        if (DEFAULT_NATIVE_EXCLUDED_DIRS.has(baseName)) continue
+        if (ignoreMatchers.some(matchesIgnore => matchesIgnore(relPath) || matchesIgnore(`${relPath}/`))) continue
+        await walk(fullPath)
+        continue
+      }
+
+      if (!entry.isFile()) continue
+      if (ignoreMatchers.some(matchesIgnore => matchesIgnore(relPath))) continue
+      if (!matcher(relPath) && !matcher(baseName)) continue
+
+      let mtimeMs = 0
+      try {
+        mtimeMs = (await stat(fullPath)).mtimeMs ?? 0
+      } catch {}
+      matches.push({ path: fullPath, mtimeMs })
+    }
+  }
+
+  await walk(searchDir)
+
+  const sorted = matches
+    .sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path))
+    .map(match => match.path)
+  const truncated = sorted.length > offset + limit
+  const files = sorted.slice(offset, offset + limit)
+
+  return { files, truncated }
+}
 
 /**
  * Extracts the static base directory from a glob pattern.
@@ -112,11 +207,26 @@ export async function glob(
   }
 
   // Exclude orphaned plugin version directories
-  for (const exclusion of await getGlobExclusionsForPluginCache(searchDir)) {
+  const pluginExclusions = await getGlobExclusionsForPluginCache(searchDir)
+  for (const exclusion of pluginExclusions) {
     args.push('--glob', exclusion)
   }
 
-  const allPaths = await ripGrep(args, searchDir, abortSignal)
+  let allPaths: string[]
+  try {
+    allPaths = await ripGrep(args, searchDir, abortSignal)
+  } catch (error) {
+    if (!isRipgrepMissing(error)) throw error
+    return nativeGlobFallback(
+      searchDir,
+      searchPattern,
+      ignorePatterns,
+      pluginExclusions,
+      { limit, offset },
+      abortSignal,
+      hidden,
+    )
+  }
 
   // ripgrep returns relative paths, convert to absolute
   const absolutePaths = allPaths.map(p =>

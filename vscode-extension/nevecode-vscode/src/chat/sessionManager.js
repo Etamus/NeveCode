@@ -3,7 +3,7 @@
  * and provides metadata for the session list UI.
  *
  * Session files live under:
- *   ~/.openclaude/projects/<sanitized-cwd>/<sessionId>.jsonl
+ *   ~/.nevecode/projects/<sanitized-cwd>/<sessionId>.jsonl
  *
  * Falls back to ~/.claude/projects/ for legacy installs.
  */
@@ -50,12 +50,12 @@ function resolveConfigDir() {
   const envDir = process.env.CLAUDE_CONFIG_DIR;
   if (envDir) return envDir;
   const home = os.homedir();
-  const openClaudeDir = path.join(home, '.openclaude');
+  const neveCodeDir = path.join(home, '.nevecode');
   const legacyDir = path.join(home, '.claude');
-  if (!fs.existsSync(openClaudeDir) && fs.existsSync(legacyDir)) {
+  if (!fs.existsSync(neveCodeDir) && fs.existsSync(legacyDir)) {
     return legacyDir;
   }
-  return openClaudeDir;
+  return neveCodeDir;
 }
 
 function getProjectsDir() {

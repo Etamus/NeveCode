@@ -6,7 +6,7 @@
 
 const vscode = require('vscode');
 
-const SCHEME = 'openclaude-diff';
+const SCHEME = 'nevecode-diff';
 let contentStore = new Map();
 
 class DiffContentProvider {

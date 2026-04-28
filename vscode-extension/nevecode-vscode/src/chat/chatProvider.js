@@ -24,13 +24,85 @@ async function openFileInEditor(filePath) {
   }
 }
 
+const CHANGE_SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024;
+const CHANGE_SNAPSHOT_MAX_FILES = 6000;
+const CHANGE_SNAPSHOT_EXCLUDE = '**/{.git,node_modules,dist,llama-bin,models,.venv,venv,__pycache__,coverage,out,build}/**';
+
+function getWorkspaceRoot() {
+  const folders = vscode.workspace.workspaceFolders;
+  return folders && folders.length > 0 ? folders[0].uri : null;
+}
+
+async function readSnapshotFile(uri) {
+  try {
+    const stat = await vscode.workspace.fs.stat(uri);
+    if (stat.type !== vscode.FileType.File || stat.size > CHANGE_SNAPSHOT_MAX_FILE_BYTES) return null;
+    return Buffer.from(await vscode.workspace.fs.readFile(uri));
+  } catch {
+    return null;
+  }
+}
+
+async function snapshotWorkspaceFiles() {
+  const root = getWorkspaceRoot();
+  if (!root) return null;
+  const files = await vscode.workspace.findFiles(
+    new vscode.RelativePattern(root, '**/*'),
+    CHANGE_SNAPSHOT_EXCLUDE,
+    CHANGE_SNAPSHOT_MAX_FILES,
+  );
+  const snapshot = new Map();
+  for (const uri of files) {
+    const bytes = await readSnapshotFile(uri);
+    snapshot.set(uri.fsPath, { uri, bytes });
+  }
+  return { root, files: snapshot };
+}
+
+async function diffWorkspaceSnapshot(before) {
+  if (!before || !before.root) return [];
+  const files = await vscode.workspace.findFiles(
+    new vscode.RelativePattern(before.root, '**/*'),
+    CHANGE_SNAPSHOT_EXCLUDE,
+    CHANGE_SNAPSHOT_MAX_FILES,
+  );
+  const after = new Map();
+  for (const uri of files) {
+    after.set(uri.fsPath, { uri, bytes: await readSnapshotFile(uri) });
+  }
+
+  const changes = [];
+  for (const [path, prev] of before.files.entries()) {
+    const next = after.get(path);
+    if (!next) {
+      if (prev.bytes) changes.push({ type: 'deleted', path, before: prev.bytes });
+      continue;
+    }
+    if (prev.bytes && next.bytes && !prev.bytes.equals(next.bytes)) {
+      changes.push({ type: 'modified', path, before: prev.bytes });
+    }
+  }
+  for (const [path, next] of after.entries()) {
+    if (!before.files.has(path)) {
+      changes.push({ type: 'created', path, before: null });
+    }
+  }
+  return changes;
+}
+
 function getLaunchConfig() {
   const cfg = vscode.workspace.getConfiguration('nevecode');
   const command = cfg.get('launchCommand', 'nevecode');
   const shimEnabled = cfg.get('useOpenAIShim', false);
-  const permissionMode = cfg.get('permissionMode', 'acceptEdits');
+  let permissionMode = cfg.get('permissionMode', 'default');
+  if (permissionMode === 'plan' || permissionMode === 'acceptEdits') permissionMode = 'default';
+  const maxOutputTokens = cfg.get('maxOutputTokens', 4096);
+  const performanceProfile = cfg.get('performanceProfile', 'balanced');
   const env = {};
   if (shimEnabled) env.CLAUDE_CODE_USE_OPENAI = '1';
+  env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(maxOutputTokens || 4096);
+  env.NEVECODE_PERFORMANCE_PROFILE = String(performanceProfile || 'balanced');
+  env.NEVECODE_REQUIRE_TOOL_APPROVAL = '1';
   // Prefer system-installed ripgrep over missing vendored binary
   env.USE_BUILTIN_RIPGREP = '0';
   const folders = vscode.workspace.workspaceFolders;
@@ -71,6 +143,15 @@ class ChatController {
     this._consecutiveToolErrors = 0; // loop breaker: abort after N consecutive tool errors
     this._turnWatchdog = null;
     this._lastModel = (globalState && globalState.get('neve.lastModel')) || null;
+    this._changeSnapshot = null;
+    this._pendingCheckpoint = null;
+    this._changeCheckpointSeq = 0;
+    this._pendingPermissions = new Map();
+    this._toolUseNames = new Map();
+    this._changeCheckpointTimer = null;
+    this._aborting = false;
+    this._consecutiveTaskOutputUses = 0;
+    this._taskOutputUsesThisTurn = 0;
     this._onDidChangeState = new vscode.EventEmitter();
     this.onDidChangeState = this._onDidChangeState.event;
   }
@@ -125,7 +206,11 @@ class ChatController {
     this._readyResolve = null;
     this._readyPromise = new Promise(resolve => { this._readyResolve = resolve; });
 
+    this._aborting = false;
+    const managedProcess = this._process;
+
     this._process.onMessage((msg) => {
+      if (this._process !== managedProcess || this._aborting) return;
       if (msg.type === 'system' && this._readyResolve) {
         this._readyResolve();
         this._readyResolve = null;
@@ -133,15 +218,22 @@ class ChatController {
       this._handleMessage(msg);
     });
     this._process.onError((err) => {
+      if (this._process !== managedProcess || this._aborting) return;
       // Fatal spawn error (ENOENT, EACCES, etc.) — process never started
       this._broadcast({ type: 'error', message: err.message || String(err) });
     });
     this._process.onStderr((text) => {
+      if (this._process !== managedProcess || this._aborting) return;
       // CLI wrote to stderr: warning or debug info, not a fatal error
       // Show as status so it doesn't interrupt the chat stream
       this._broadcast({ type: 'status', content: '⚠ ' + text.split('\n')[0].trim() });
     });
     this._process.onExit(({ code }) => {
+      if (this._process !== managedProcess) return;
+      if (this._aborting) {
+        this._aborting = false;
+        return;
+      }
       this._clearTurnWatchdog();
       if (this._streaming) {
         // Process died mid-stream — flush and unblock the renderer
@@ -157,6 +249,7 @@ class ChatController {
       this._accumulatedText = '';
       this._toolUses = [];
       this._lastResult = null;
+      this._finalizeChangeCheckpoint();
       this._broadcast({
         type: 'connected',
         message: code === 0 ? 'Pronto' : `Processo encerrado (código ${code})`,
@@ -194,11 +287,17 @@ class ChatController {
           : {},
       );
     }
+    this._changeSnapshot = await snapshotWorkspaceFiles().catch(() => null);
+    this._pendingPermissions.clear();
+    this._toolUseNames.clear();
+    this._consecutiveTaskOutputUses = 0;
+    this._taskOutputUsesThisTurn = 0;
     // Clear any panel/plan from the previous message before starting new round
     this._broadcast({ type: 'clear_plan' });
-    // Phase 1: Generate task plan via local planning endpoint (fails gracefully)
+    // Phase 1: Generate task plan. Default is zero-cost heuristic to avoid
+    // paying a second heavy LLM inference before every real generation.
     let tasks = null;
-    try { tasks = await this._generatePlan(text); } catch {}
+    try { tasks = await this._getPlanForMessage(text); } catch {}
 
     let sendText = text;
     if (tasks && tasks.length >= 2) {
@@ -213,8 +312,54 @@ class ChatController {
     if (_wsf && _wsf.length > 0) {
       sendText = '[diretório de trabalho: ' + _wsf[0].uri.fsPath + ']\n\n' + sendText;
     }
-    // Phase 2: Execute via openclaude with optional plan injected
+    // Phase 2: Execute via nevecode with optional plan injected
     await this._doSend(sendText);
+  }
+
+  async _getPlanForMessage(text) {
+    const cfg = vscode.workspace.getConfiguration('nevecode');
+    const mode = cfg.get('planningMode', 'heuristic');
+    if (mode === 'off') return null;
+    if (mode === 'llm') return this._generatePlan(text);
+    return this._generateHeuristicPlan(text);
+  }
+
+  _generateHeuristicPlan(text) {
+    const s = String(text || '').trim();
+    if (!s) return null;
+    const lower = s.toLowerCase();
+    const looksTrivial = s.length < 80 && !/(crie|faça|implemente|corrija|ajuste|refatore|melhore|adicione|remova|altere|edite|arquivo|página|pagina|componente|bug|erro)/i.test(s);
+    if (looksTrivial) return null;
+
+    if (/(corrija|bug|erro|falha|trav|quebra)/i.test(lower)) {
+      return [
+        'Localizar a causa do problema no código relevante',
+        'Aplicar correção mínima e segura',
+        'Validar o fluxo afetado',
+        'Confirmar resultado final e resumir as mudanças',
+      ];
+    }
+    if (/(melhore|refatore|otimize|performance|rápid|rapíd|lento)/i.test(lower)) {
+      return [
+        'Identificar os pontos do código que precisam de melhoria',
+        'Aplicar alterações direcionadas sem reescrever arquivos inteiros',
+        'Revisar impacto em comportamento e compatibilidade',
+        'Confirmar resultado final e resumir as mudanças',
+      ];
+    }
+    if (/(crie|faça|implemente|adicione|nova|novo|página|pagina|html|componente|tela)/i.test(lower)) {
+      return [
+        'Identificar arquivos e estrutura necessária no workspace',
+        'Implementar a funcionalidade solicitada com mudanças objetivas',
+        'Ajustar integração, estilos ou configuração quando necessário',
+        'Confirmar resultado final e resumir as mudanças',
+      ];
+    }
+    return [
+      'Analisar a solicitação e o contexto do projeto',
+      'Executar as alterações necessárias de forma objetiva',
+      'Validar o resultado e informar o que foi feito',
+    ];
   }
 
   async _generatePlan(userText) {
@@ -280,6 +425,7 @@ class ChatController {
       await Promise.race([this._readyPromise, grace]);
       this._readyPromise = null;
     }
+    this.setPermissionMode(this._getConfiguredPermissionMode());
     this._accumulatedText = '';
     this._toolUses = [];
     try {
@@ -298,7 +444,7 @@ class ChatController {
       this._turnWatchdog = null;
       this._broadcast({ type: 'error', message: 'Abortado: a geração ficou sem resposta por tempo demais.' });
       this.abort();
-    }, 120000);
+    }, 180000);
   }
 
   _clearTurnWatchdog() {
@@ -310,8 +456,13 @@ class ChatController {
 
   abort() {
     if (this._process) {
+      const processToKill = this._process;
+      this._aborting = true;
+      this._process = null;
       this._clearTurnWatchdog();
-      this._process.kill(); // SIGTERM — imediato
+      this._clearChangeCheckpointTimer();
+      this._pendingPermissions.clear();
+      processToKill.kill(); // kill tree — imediato
       // Mark streaming as done BEFORE onExit fires, so onExit won't double-broadcast.
       const text = this._accumulatedText;
       this._streaming = false;
@@ -319,29 +470,141 @@ class ChatController {
       this._broadcast({ type: 'stream_end', text, usage: null, final: true, aborted: true });
       this._onDidChangeState.fire('idle');
     }
+    this._changeSnapshot = null;
+  }
+
+  _getConfiguredPermissionMode() {
+    const cfg = vscode.workspace.getConfiguration('nevecode');
+    const mode = cfg.get('permissionMode', 'default');
+    return mode === 'plan' || mode === 'acceptEdits' ? 'default' : mode;
+  }
+
+  _clearChangeCheckpointTimer() {
+    if (this._changeCheckpointTimer) {
+      clearTimeout(this._changeCheckpointTimer);
+      this._changeCheckpointTimer = null;
+    }
+  }
+
+  _scheduleChangeCheckpoint() {
+    if (!this._changeSnapshot) return;
+    this._clearChangeCheckpointTimer();
+    this._changeCheckpointTimer = setTimeout(() => {
+      this._changeCheckpointTimer = null;
+      this._finalizeChangeCheckpoint({ keepSnapshot: true });
+    }, 450);
+  }
+
+  async _finalizeChangeCheckpoint(options = {}) {
+    const before = this._changeSnapshot;
+    if (!options.keepSnapshot) this._changeSnapshot = null;
+    if (!before) return;
+    const changes = await diffWorkspaceSnapshot(before).catch(() => []);
+    if (!changes || changes.length === 0) return;
+    const id = String(++this._changeCheckpointSeq);
+    this._pendingCheckpoint = { id, changes };
+    const files = [...new Set(changes.map(c => c.path))];
+    this._broadcast({
+      type: 'change_checkpoint',
+      id,
+      fileCount: files.length,
+      changeCount: changes.length,
+      files: files.slice(0, 8).map(f => vscode.workspace.asRelativePath(f)),
+    });
+  }
+
+  async keepChanges(id) {
+    if (!this._pendingCheckpoint || this._pendingCheckpoint.id !== id) return;
+    this._clearChangeCheckpointTimer();
+    this._pendingCheckpoint = null;
+    if (this._changeSnapshot) {
+      this._changeSnapshot = await snapshotWorkspaceFiles().catch(() => null);
+    }
+    this._broadcast({ type: 'change_checkpoint_cleared', id });
+  }
+
+  async undoChanges(id) {
+    const checkpoint = this._pendingCheckpoint;
+    if (!checkpoint || checkpoint.id !== id) return;
+    try {
+      for (const change of [...checkpoint.changes].reverse()) {
+        const uri = vscode.Uri.file(change.path);
+        if (change.type === 'created') {
+          try { await vscode.workspace.fs.delete(uri, { recursive: true, useTrash: false }); } catch {}
+        } else if (change.before) {
+          const parent = vscode.Uri.file(require('path').dirname(change.path));
+          try { await vscode.workspace.fs.createDirectory(parent); } catch {}
+          await vscode.workspace.fs.writeFile(uri, change.before);
+        }
+      }
+      this._clearChangeCheckpointTimer();
+      this._pendingCheckpoint = null;
+      if (this._changeSnapshot) {
+        this._changeSnapshot = await snapshotWorkspaceFiles().catch(() => null);
+      }
+      this._broadcast({ type: 'change_checkpoint_cleared', id });
+      this._broadcast({ type: 'status', content: 'Alterações desfeitas.' });
+    } catch (err) {
+      this._broadcast({ type: 'error', message: 'Falha ao desfazer alterações: ' + (err.message || String(err)) });
+    }
+  }
+
+  setPermissionMode(mode) {
+    if (!mode || mode === 'plan') return;
+    if (this._process) {
+      try { this._process.setPermissionMode(mode); } catch {}
+    }
+  }
+
+  _rememberToolUse(id, name) {
+    if (id && name) this._toolUseNames.set(id, name);
+  }
+
+  _isEditToolName(name) {
+    return /^(write|edit|multiedit|notebookedit)$/i.test(String(name || ''));
+  }
+
+  _recordToolUseName(name) {
+    if (String(name || '').toLowerCase() === 'taskoutput') {
+      this._consecutiveTaskOutputUses++;
+      this._taskOutputUsesThisTurn++;
+      if (this._consecutiveTaskOutputUses >= 3 || this._taskOutputUsesThisTurn >= 4) {
+        this._consecutiveTaskOutputUses = 0;
+        this._taskOutputUsesThisTurn = 0;
+        this._broadcast({ type: 'error', message: 'Abortado: loop de TaskOutput detectado.' });
+        this.abort();
+        return false;
+      }
+    } else if (name) {
+      this._consecutiveTaskOutputUses = 0;
+    }
+    return true;
   }
 
   sendPermissionResponse(requestId, action, toolUseId) {
     if (!this._process) return;
+    const pending = this._pendingPermissions.get(requestId) || {};
+    this._pendingPermissions.delete(requestId);
     if (action === 'deny') {
       try {
-        this._process.write({
-          type: 'control_response',
-          response: {
-            subtype: 'error',
-            request_id: requestId,
-            error: 'Usuário negou permissão',
-          },
+        this._process.sendControlResponse(requestId, {
+          behavior: 'deny',
+          message: 'Usuário reprovou a execução da ferramenta',
+          toolUseID: toolUseId || pending.toolUseId || undefined,
+          decisionClassification: 'user_reject',
         });
       } catch (err) {
         this._broadcast({ type: 'error', message: err.message });
       }
+      setTimeout(() => this.abort(), 25);
       return;
     }
     try {
       this._process.sendControlResponse(requestId, {
-        toolUseID: toolUseId || undefined,
-        ...(action === 'allow-session' ? { remember: true } : {}),
+        behavior: 'allow',
+        updatedInput: pending.input && typeof pending.input === 'object' ? pending.input : {},
+        toolUseID: toolUseId || pending.toolUseId || undefined,
+        decisionClassification: 'user_temporary',
       });
     } catch (err) {
       this._broadcast({ type: 'error', message: err.message });
@@ -353,6 +616,10 @@ class ChatController {
   _handleMessage(msg) {
     if (msg.session_id && !this._currentSessionId) {
       this._currentSessionId = msg.session_id;
+    }
+
+    if (msg.type === 'control_response') {
+      return;
     }
 
     // System message — extract model and session info
@@ -373,14 +640,20 @@ class ChatController {
     if (msg.type === 'control_request' || isControlRequest(msg)) {
       const req = msg.request || {};
       const { toolDisplayName, parseToolInput } = require('./messageParser');
+      const requestId = msg.request_id || req.request_id || msg.id;
+      const toolUseId = req.tool_use_id || req.toolUseID || null;
+      const input = req.input || req.tool_input || null;
+      if (requestId) {
+        this._pendingPermissions.set(requestId, { input, toolUseId });
+      }
       this._broadcast({
         type: 'permission_request',
-        requestId: msg.request_id,
+        requestId,
         toolName: req.tool_name || 'Unknown',
         displayName: req.display_name || req.title || toolDisplayName(req.tool_name),
-        description: req.description || '',
-        inputPreview: parseToolInput(req.input),
-        toolUseId: req.tool_use_id || null,
+        description: req.description || req.action_description || '',
+        inputPreview: parseToolInput(input),
+        toolUseId,
       });
       return;
     }
@@ -421,6 +694,8 @@ class ChatController {
 
       if (toolBlocks.length > 0) {
         for (const tu of toolBlocks) {
+          this._rememberToolUse(tu.id, tu.name);
+          if (!this._recordToolUseName(tu.name)) return;
           this._broadcast({
             type: 'tool_input_ready',
             toolUseId: tu.id,
@@ -450,6 +725,9 @@ class ChatController {
               content: resultText.slice(0, 2000) || '(done)',
               isError: block.is_error || false,
             });
+            if (!block.is_error && this._isEditToolName(this._toolUseNames.get(block.tool_use_id))) {
+              this._scheduleChangeCheckpoint();
+            }
             // Loop breaker: track consecutive tool errors
             if (block.is_error) {
               this._consecutiveToolErrors++;
@@ -499,6 +777,7 @@ class ChatController {
       this._accumulatedText = '';
       this._toolUses = [];
       this._streaming = false;
+      this._finalizeChangeCheckpoint();
       this._onDidChangeState.fire('idle');
       return;
     }
@@ -553,6 +832,8 @@ class ChatController {
           this._currentBlockType = event.content_block.type;
           if (event.content_block.type === 'tool_use') {
             const tu = event.content_block;
+            this._rememberToolUse(tu.id, tu.name);
+            if (!this._recordToolUseName(tu.name)) return;
             this._toolUses.push({ id: tu.id, name: tu.name, input: '' });
             const { toolDisplayName, toolIcon } = require('./messageParser');
             this._broadcast({
@@ -702,6 +983,12 @@ class NeveCodeChatViewProvider {
         case 'permission_response':
           this._chatController.sendPermissionResponse(msg.requestId, msg.action, msg.toolUseId);
           break;
+        case 'keep_changes':
+          await this._chatController.keepChanges(msg.id);
+          break;
+        case 'undo_changes':
+          await this._chatController.undoChanges(msg.id);
+          break;
         case 'copy_code':
           if (msg.text) await vscode.env.clipboard.writeText(msg.text);
           break;
@@ -721,8 +1008,9 @@ class NeveCodeChatViewProvider {
           this._restoreMessages(webview);
           break;
         case 'set_permission_mode':
-          if (msg.mode) {
+          if (msg.mode && msg.mode !== 'plan') {
             await vscode.workspace.getConfiguration('nevecode').update('permissionMode', msg.mode, vscode.ConfigurationTarget.Global);
+            this._chatController.setPermissionMode(msg.mode);
           }
           break;
         case 'get_suggested_file':
@@ -767,7 +1055,9 @@ class NeveCodeChatViewProvider {
           break;
         }
         case 'webview_ready': {
-          webview.postMessage({ type: 'init_config', permissionMode: vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'acceptEdits') });
+          let permissionMode = vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'default');
+          if (permissionMode === 'plan' || permissionMode === 'acceptEdits') permissionMode = 'default';
+          webview.postMessage({ type: 'init_config', permissionMode });
           const cachedModel = this._chatController._lastModel;
           if (cachedModel) webview.postMessage({ type: 'system_info', model: cachedModel });
           NeveCodeChatViewProvider._sendActiveFileSuggestion(webview);
@@ -906,6 +1196,12 @@ class NeveCodeChatPanelManager {
         case 'permission_response':
           this._chatController.sendPermissionResponse(msg.requestId, msg.action, msg.toolUseId);
           break;
+        case 'keep_changes':
+          await this._chatController.keepChanges(msg.id);
+          break;
+        case 'undo_changes':
+          await this._chatController.undoChanges(msg.id);
+          break;
         case 'copy_code':
           if (msg.text) await vscode.env.clipboard.writeText(msg.text);
           break;
@@ -925,8 +1221,9 @@ class NeveCodeChatPanelManager {
           this._restoreMessages(webview);
           break;
         case 'set_permission_mode':
-          if (msg.mode) {
+          if (msg.mode && msg.mode !== 'plan') {
             await vscode.workspace.getConfiguration('nevecode').update('permissionMode', msg.mode, vscode.ConfigurationTarget.Global);
+            this._chatController.setPermissionMode(msg.mode);
           }
           break;
         case 'pick_file': {
@@ -958,7 +1255,9 @@ class NeveCodeChatPanelManager {
           NeveCodeChatViewProvider._sendActiveFileSuggestion(webview);
           break;
         case 'webview_ready': {
-          webview.postMessage({ type: 'init_config', permissionMode: vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'acceptEdits') });
+          let permissionMode = vscode.workspace.getConfiguration('nevecode').get('permissionMode', 'default');
+          if (permissionMode === 'plan' || permissionMode === 'acceptEdits') permissionMode = 'default';
+          webview.postMessage({ type: 'init_config', permissionMode });
           const cachedModel = this._chatController._lastModel;
           if (cachedModel) webview.postMessage({ type: 'system_info', model: cachedModel });
           NeveCodeChatViewProvider._sendActiveFileSuggestion(webview);

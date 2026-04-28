@@ -1,5 +1,6 @@
 const fs = require('fs');
-const fpath = 'D:/Openclaude/vscode-extension/nevecode-vscode/src/chat/chatProvider.js';
+const path = require('path');
+const fpath = path.join(__dirname, 'vscode-extension', 'nevecode-vscode', 'src', 'chat', 'chatProvider.js');
 let c = fs.readFileSync(fpath, 'utf8');
 const ls = c.split('\n');
 const idx = ls.findIndex(l => l.includes("case 'pick_file':"));

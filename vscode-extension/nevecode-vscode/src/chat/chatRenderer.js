@@ -299,17 +299,38 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     }
     .task-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+    /* ── Change review (manter/desfazer alterações) ── */
+    .change-review {
+      display: none; align-items: center; gap: 6px;
+      margin: 0 8px 3px; padding: 2px 6px; border-radius: 6px;
+      border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.22));
+      background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .change-review.visible { display: flex; }
+    .change-review-icon { color: var(--vscode-gitDecoration-modifiedResourceForeground, #cca700); display: flex; align-items: center; }
+    .change-review-text { flex: 1; min-width: 0; font-size: 11px; color: var(--vscode-foreground); line-height: 1; text-align: left; }
+    .change-review-title { font-weight: 600; margin-bottom: 0; }
+    .change-review-files { color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .change-review-actions { display: flex; gap: 5px; flex-shrink: 0; }
+    .change-review-btn { width: 66px; min-height: 20px; padding: 1px 0; border-radius: 4px; border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); font: inherit; font-size: 11px; cursor: pointer; text-align: center; }
+    .change-review-btn.keep { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.16)); color: var(--vscode-foreground); }
+    .change-review-btn.keep:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.22)); }
+    .change-review-btn.undo { background: transparent; color: var(--vscode-foreground); border-color: var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); }
+    .change-review-btn.undo:hover { background: var(--vscode-list-hoverBackground); }
+
     /* ── Permission card ── */
-    .perm-card { margin: 8px 0; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground)); background: var(--vscode-inputValidation-warningBackground, transparent); }
-    .perm-title { font-weight: 600; font-size: 12px; color: var(--vscode-editorWarning-foreground, var(--vscode-foreground)); margin-bottom: 4px; }
+    .perm-card { margin: -2px 0 8px 28px; padding: 0; border-radius: 0; border: 0; background: transparent; color: var(--vscode-foreground); }
+    .perm-title { font-weight: 600; font-size: 12px; color: var(--vscode-foreground); margin-bottom: 4px; }
     .perm-desc { font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 8px; }
     .perm-input { padding: 6px 8px; margin-bottom: 8px; border-radius: 4px; background: var(--vscode-textCodeBlock-background); font-family: var(--vscode-editor-font-family, Consolas, monospace); font-size: 11px; color: var(--vscode-foreground); white-space: pre-wrap; max-height: 100px; overflow-y: auto; }
-    .perm-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    .perm-btn { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid transparent; font-family: inherit; }
-    .perm-btn.allow { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-    .perm-btn.allow:hover { background: var(--vscode-button-hoverBackground); }
-    .perm-btn.deny, .perm-btn.allow-session { background: transparent; color: var(--vscode-foreground); border-color: var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); }
-    .perm-btn.deny:hover, .perm-btn.allow-session:hover { background: var(--vscode-list-hoverBackground); }
+    .perm-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .perm-btn { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); font-family: inherit; line-height: 1.2; }
+    .perm-btn.allow { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.16)); color: var(--vscode-foreground); }
+    .perm-btn.allow:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.22)); }
+    .perm-btn.deny { background: transparent; color: var(--vscode-foreground); border-color: var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); }
+    .perm-btn.deny:hover { background: var(--vscode-list-hoverBackground); }
+    .messages > .perm-card { margin-left: 44px; margin-right: 16px; }
 
     /* ── Status / rate limit ── */
     .msg-status { align-self: center; font-size: 11px; color: var(--vscode-descriptionForeground); padding: 2px 10px; margin: 5px auto; }
@@ -381,13 +402,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       font-size: 12px; color: var(--vscode-descriptionForeground);
     }
     .prefill-bar.visible { display: flex; }
-    .prefill-spinner {
-      width: 11px; height: 11px; flex-shrink: 0;
-      border: 1.5px solid rgba(128,128,128,0.25);
-      border-top-color: var(--vscode-descriptionForeground);
-      border-radius: 50%; animation: spin 0.8s linear infinite;
-    }
-    .prefill-elapsed { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.55; }
 
     /* ── Gen indicators wrapper (holds thinking + prefill) ── */
     .gen-indicators { flex-shrink: 0; padding: 0 0 2px; display: flex; flex-direction: column; }
@@ -584,6 +598,10 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   </div>
 
   <div class="gen-indicators">
+    <div class="prefill-bar" id="prefillBar">
+      <span id="prefillText"></span>
+    </div>
+
     <!-- Thinking / reasoning block — streams text, then collapses -->
     <div class="th-block" id="thinkingBlock">
       <div class="th-header" id="thinkingHeader">
@@ -597,14 +615,9 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         <div class="th-text" id="thinkingText"></div>
       </div>
     </div>
-
-    <div class="prefill-bar" id="prefillBar">
-      <div class="prefill-spinner"></div>
-      <span id="prefillText">Processando contexto...</span>
-      <span class="prefill-elapsed" id="prefillElapsed">0s</span>
-    </div>
   </div>
 
+  <div class="change-review" id="changeReview"></div>
   <div class="task-panel" id="taskPanel"></div>
 
   <div class="input-area">
@@ -627,14 +640,12 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       <div class="perm-wrap" id="permWrap">
         <button class="bar-btn" id="permBtn" title="Modo de aprovações">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span id="permLabel">Aprovações Padrão</span>
+          <span id="permLabel">Aprovação padrão</span>
           <svg class="bar-chevron" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="perm-dropdown" id="permDropdown">
-          <div class="perm-option" data-mode="default"><span class="perm-option-label">Padrão</span><span class="perm-option-desc">Solicita confirmação para cada operação</span></div>
-          <div class="perm-option" data-mode="acceptEdits"><span class="perm-option-label">Aceitar edições</span><span class="perm-option-desc">Aceita edições de arquivo automaticamente</span></div>
+          <div class="perm-option" data-mode="default"><span class="perm-option-label">Aprovação padrão</span><span class="perm-option-desc">Solicita confirmação para cada alteração</span></div>
           <div class="perm-option" data-mode="bypassPermissions"><span class="perm-option-label">Bypass total</span><span class="perm-option-desc">Executa tudo sem pedir confirmação</span></div>
-          <div class="perm-option" data-mode="plan"><span class="perm-option-label">Somente planejar</span><span class="perm-option-desc">Apenas descreve o plano, sem executar</span></div>
         </div>
       </div>
     </div>
@@ -671,7 +682,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   const typingIndicator = null; // removido — indicadores visuais substituem os 3 pontos
   const prefillBar = document.getElementById('prefillBar');
   const prefillText = document.getElementById('prefillText');
-  const prefillElapsed = document.getElementById('prefillElapsed');
   const modelLabel = document.getElementById('modelLabel');
   const sessionOverlay = document.getElementById('sessionOverlay');
   const closeSessionsBtn = document.getElementById('closeSessionsBtn');
@@ -681,23 +691,52 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   const permBtn = document.getElementById('permBtn');
   const permLabel = document.getElementById('permLabel');
   const permDropdown = document.getElementById('permDropdown');
+  const changeReview = document.getElementById('changeReview');
 
   const PERM_LABELS = {
-    default: 'Padrão',
-    acceptEdits: 'Aceitar edições',
+    default: 'Aprovação padrão',
+    acceptEdits: 'Aprovação padrão',
     bypassPermissions: 'Bypass total',
-    plan: 'Somente planejar',
   };
 
-  let _currentPerm = 'acceptEdits';
+  let _currentPerm = 'default';
 
   function setPermMode(mode, notify) {
+    if (mode === 'plan' || mode === 'acceptEdits') mode = 'default';
     _currentPerm = mode;
     if (permLabel) permLabel.textContent = PERM_LABELS[mode] || mode;
     document.querySelectorAll('.perm-option').forEach(el => {
       el.classList.toggle('active', el.dataset.mode === mode);
     });
     if (notify !== false) vscode.postMessage({ type: 'set_permission_mode', mode });
+  }
+
+  function renderChangeReview(info) {
+    if (!changeReview || !info || !info.id) return;
+    const fileCount = Number(info.fileCount || 0);
+    const fileLabel = fileCount === 1 ? '1 arquivo alterado' : fileCount + ' arquivos alterados';
+    changeReview.dataset.id = info.id;
+    changeReview.innerHTML =
+      '<div class="change-review-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></div>' +
+      '<div class="change-review-text"><div class="change-review-title">' + escapeForMd(fileLabel) + '</div></div>' +
+      '<div class="change-review-actions"><button class="change-review-btn undo" data-action="undo">Desfazer</button><button class="change-review-btn keep" data-action="keep">Manter</button></div>';
+    changeReview.classList.add('visible');
+    changeReview.querySelectorAll('.change-review-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = changeReview.dataset.id;
+        const action = btn.dataset.action;
+        changeReview.querySelectorAll('.change-review-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.55'; });
+        vscode.postMessage({ type: action === 'undo' ? 'undo_changes' : 'keep_changes', id });
+      });
+    });
+  }
+
+  function clearChangeReview(id) {
+    if (!changeReview) return;
+    if (id && changeReview.dataset.id && changeReview.dataset.id !== id) return;
+    changeReview.classList.remove('visible');
+    changeReview.innerHTML = '';
+    delete changeReview.dataset.id;
   }
 
   if (permBtn) {
@@ -733,8 +772,11 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   function renderMarkdown(text) {
     if (!text) return '';
 
-    // Step 1: extract fenced code blocks before any escaping
+    // Step 1: extract fenced code blocks before any escaping.
+    // Use printable ASCII sentinels: NUL placeholders can become �CODE0� in WebView HTML.
     const codeBlocks = [];
+    const codeSentinelPrefix = '@@NEVE_CODE_BLOCK_';
+    const codeSentinelSuffix = '_@@';
     // Backtick char code = 96; use new RegExp so backticks don't break the template literal
     const BTICK = String.fromCharCode(96);
     const FENCE_RE = new RegExp(BTICK+BTICK+BTICK+'([a-zA-Z0-9_]*)\\n([\\\\s\\\\S]*?)'+BTICK+BTICK+BTICK, 'g');
@@ -749,7 +791,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         '<button class="code-copy-btn" data-copy-id="' + id + '">Copiar</button></div>' +
         '<code class="code-block" id="' + id + '">' + highlighted + '</code></div>';
       codeBlocks.push(block);
-      return '\x00CODE' + (codeBlocks.length - 1) + '\x00';
+      return codeSentinelPrefix + (codeBlocks.length - 1) + codeSentinelSuffix;
     });
 
     // Step 2: escape HTML special chars for remaining text
@@ -837,8 +879,11 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
     // Step 14: restore code blocks
     codeBlocks.forEach((block, i) => {
-      html = html.replace('\\x00CODE' + i + '\\x00', block);
+      html = html.split(codeSentinelPrefix + i + codeSentinelSuffix).join(block);
     });
+    html = html
+      .replace(/@@NEVE_CODE_BLOCK_\\d+_@@/g, '')
+      .replace(/(?:\\uFFFD|�)CODE\\d+(?:\\uFFFD|�)/g, '');
 
     return html;
   }
@@ -924,16 +969,15 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   function _showPrefill(label) {
     if (_prefillTimer !== null) {
       // Já rodando: apenas atualiza o label se fornecido
-      if (label) prefillText.textContent = label;
+      if (typeof label === 'string') prefillText.textContent = label;
       return;
     }
     _prefillStart = Date.now();
-    prefillElapsed.textContent = '0s';
-    prefillText.textContent = label || 'Processando contexto...';
+    prefillText.textContent = typeof label === 'string' ? label : '';
+    if (!prefillText.textContent.trim()) return;
     prefillBar.classList.add('visible');
     _prefillTimer = setInterval(() => {
-      const s = Math.floor((Date.now() - _prefillStart) / 1000);
-      prefillElapsed.textContent = s + 's';
+      // Mantém apenas o estado interno; sem spinner e sem contagem visível.
     }, 500);
   }
 
@@ -1155,29 +1199,46 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     el.className = 'perm-card';
     el.dataset.requestId = perm.requestId || '';
     el.innerHTML =
-      '<div class="perm-title">Permissão Necessária: ' + escapeForMd(perm.displayName || perm.toolName || 'Ferramenta') + '</div>' +
-      (perm.description ? '<div class="perm-desc">' + escapeForMd(perm.description) + '</div>' : '') +
-      (perm.inputPreview ? '<div class="perm-input">' + escapeForMd(perm.inputPreview) + '</div>' : '') +
       '<div class="perm-actions">' +
-        '<button class="perm-btn allow" data-action="allow">Permitir</button>' +
-        '<button class="perm-btn deny" data-action="deny">Negar</button>' +
-        '<button class="perm-btn allow-session" data-action="allow-session">Permitir para esta sessão</button>' +
+        '<button class="perm-btn allow" data-action="allow">Aprovar</button>' +
+        '<button class="perm-btn deny" data-action="deny">Reprovar</button>' +
       '</div>';
     el.querySelectorAll('.perm-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const action = btn.dataset.action;
+        el.querySelectorAll('.perm-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.4'; });
         vscode.postMessage({
           type: 'permission_response',
           requestId: perm.requestId,
           toolUseId: perm.toolUseId || null,
           action: action,
         });
-        el.querySelectorAll('.perm-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.4'; });
-        btn.style.opacity = '1';
+        el.remove();
+        if (action === 'deny') {
+          _hidePrefill();
+          finalizeAssistant();
+          setStreaming(false);
+          disablePendingPermissionCards();
+        }
       });
     });
-    messagesEl.appendChild(el);
+    const relatedTool = perm.toolUseId ? document.querySelector('[data-tool-id="' + perm.toolUseId + '"]') : null;
+    if (relatedTool && relatedTool.parentElement) {
+      relatedTool.insertAdjacentElement('afterend', el);
+    } else {
+      const { container } = getOrCreateAssistantEl();
+      container.appendChild(el);
+    }
     scrollToBottom();
+  }
+
+  function disablePendingPermissionCards() {
+    document.querySelectorAll('.perm-card').forEach(card => {
+      card.querySelectorAll('.perm-btn').forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+      });
+    });
   }
 
   function appendStatusMessage(text) {
@@ -1214,6 +1275,10 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
   function showThinkingBlock() {
     _thinkingAccum = '';
+    hideWelcome();
+    if (thinkingBlock && thinkingBlock.parentElement !== messagesEl) {
+      messagesEl.appendChild(thinkingBlock);
+    }
     if (thinkingText) thinkingText.textContent = '';
     if (thinkingLabel) thinkingLabel.textContent = 'Pensando...';
     if (thinkingMeta) thinkingMeta.textContent = '';
@@ -1361,12 +1426,43 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     }
   }
 
-  // Remove <nevplan> e <nevnext> do texto exibido (completo, parcial ou fragmentos)
+  // Remove metadados internos e lixo de raciocínio do texto exibido
   function _stripNevTags(text) {
-    return text
+    if (!text) return '';
+    let clean = String(text)
+      .replace(/@@NEVE_CODE_BLOCK_\\d+_@@/g, '')
+      .replace(/(?:\\uFFFD|�)CODE\\d+(?:\\uFFFD|�)/g, '')
       .replace(/<nevplan>[\\s\\S]*?<\\/nevplan>\\n?/g, '') // bloco completo
       .replace(/<nevplan>[\\s\\S]*$/g, '')                 // bloco parcial (sendo streamado)
       .replace(/<nevnext>\\n?/g, '');                      // tokens de transicao
+
+    // Alguns modelos locais vazam tags/fragmentos internos no canal de resposta.
+    // Remova blocos completos e parciais para não expor raciocínio/tool XML cru.
+    clean = clean
+      .replace(/<think\\b[^>]*>[\\s\\S]*?<\\/think>\\n?/gi, '')
+      .replace(/<think\\b[^>]*>[\\s\\S]*$/gi, '')
+      .replace(/<\\/?think\\b[^>]*>\\n?/gi, '')
+      .replace(/<parameter\\b[^>]*>[\\s\\S]*?<\\/parameter>\\n?/gi, '')
+      .replace(/<parameter\\b[^>]*>[\\s\\S]*$/gi, '')
+      .replace(/<\\/?parameter\\b[^>]*>\\n?/gi, '')
+      .replace(/<tool_call\\b[^>]*>[\\s\\S]*?<\\/tool_call>\\n?/gi, '')
+      .replace(/<tool_call\\b[^>]*>[\\s\\S]*$/gi, '')
+      .replace(/<\\/?tool_call\\b[^>]*>\\n?/gi, '')
+      .replace(/<tool_use\\b[^>]*>[\\s\\S]*?<\\/tool_use>\\n?/gi, '')
+      .replace(/<tool_use\\b[^>]*>[\\s\\S]*$/gi, '')
+      .replace(/<\\/?tool_use\\b[^>]*>\\n?/gi, '')
+      .replace(/<function\\b[^>]*>[\\s\\S]*?<\\/function>\\n?/gi, '')
+      .replace(/<function\\b[^>]*>[\\s\\S]*$/gi, '')
+      .replace(/<\\/?function\\b[^>]*>\\n?/gi, '')
+      .replace(/<parameters\\b[^>]*>[\\s\\S]*?<\\/parameters>\\n?/gi, '')
+      .replace(/<parameters\\b[^>]*>[\\s\\S]*$/gi, '')
+      .replace(/<\\/?parameters\\b[^>]*>\\n?/gi, '')
+      .replace(/(?:^|\\n)[^\\n]*(?:verification agent wasn['’]t explicitly invoked|verification agent was not explicitly invoked)[^\\n]*(?=\\n|$)/gi, '')
+      .replace(/(?:^|\\n)[^\\n]*(?:vou atualizar as tarefas|atualizar as tarefas para mostrar o progresso)[^\\n]*(?=\\n|$)/gi, '')
+      .replace(/<\\/[a-z_:-]+>\\n?/gi, '')
+      .replace(/\\n{3,}/g, '\\n\\n');
+
+    return clean;
   }
 
   // Processa tokens <nevnext> no texto acumulado e avança tarefas conforme necessário
@@ -1519,12 +1615,19 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       _hidePrefill();
       finalizeAssistant();
       setStreaming(false);
+      disablePendingPermissionCards();
       vscode.postMessage({ type: 'abort' });
     } else {
       sendMessage();
     }
   });
-  abortBtn.addEventListener('click', () => vscode.postMessage({ type: 'abort' }));
+  abortBtn.addEventListener('click', () => {
+    _hidePrefill();
+    finalizeAssistant();
+    setStreaming(false);
+    disablePendingPermissionCards();
+    vscode.postMessage({ type: 'abort' });
+  });
   newChatBtn.addEventListener('click', () => vscode.postMessage({ type: 'new_session' }));
   historyBtn.addEventListener('click', () => {
     sessionOverlay.classList.toggle('visible');
@@ -1584,7 +1687,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
           _taskClear(0); // No active plan — clear any stale state
         }
         _planPrebuilt = false; // consume flag
-        _showPrefill('Gerando resposta...');
+        _showPrefill('');
         setStreaming(true);
         getOrCreateAssistantEl();
         break;
@@ -1637,6 +1740,14 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         _taskClear(0);
         break;
 
+      case 'change_checkpoint':
+        renderChangeReview(msg);
+        break;
+
+      case 'change_checkpoint_cleared':
+        clearChangeReview(msg.id);
+        break;
+
       case 'tool_use': {
         // Ferramentas internas — não exibir cards no chat (ainda são executadas)
         const _hiddenTools = ['TodoWrite', 'TodoRead', 'AskUserQuestion', 'ExitPlanMode'];
@@ -1647,6 +1758,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       }
 
       case 'tool_result':
+        if (msg.isError) _hadError = true;
         updateToolResult(msg.toolUseId, msg.content, msg.isError);
         break;
 
@@ -1698,7 +1810,10 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
         _hadError = true;
         setStreaming(false);
         finalizeAssistant();
-        appendStatusMessage('Erro: ' + (msg.message || 'Erro desconhecido'));
+        {
+          const errText = msg.message || 'Erro desconhecido';
+          appendStatusMessage(String(errText).startsWith('Abortado:') ? errText : 'Erro: ' + errText);
+        }
         break;
 
       case 'session_list':
@@ -1715,6 +1830,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
       case 'session_cleared':
         _taskClear(0); // limpa painel da sessão anterior
+        clearChangeReview();
         setStreaming(false);
         messagesEl.innerHTML = '';
         if (welcomeEl) {
@@ -1729,6 +1845,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
 
       case 'restore_messages':
         _taskClear(0); // limpa painel de qualquer sessão anterior
+        clearChangeReview();
         setStreaming(false);
         hideWelcome();
         if (msg.messages) {
@@ -1741,7 +1858,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
               appendUserMessage(m.text || '');
             } else if (m.role === 'assistant') {
               const { textEl } = getOrCreateAssistantEl();
-              textEl.innerHTML = renderMarkdown(m.text || '');
+              textEl.innerHTML = renderMarkdown(_stripNevTags(m.text || ''));
               if (m.toolUses && m.toolUses.length > 0) {
                 const _hiddenRestoreTools = ['TodoWrite', 'TodoRead', 'AskUserQuestion', 'ExitPlanMode'];
                 for (const tu of m.toolUses) {

@@ -58,10 +58,10 @@ code --install-extension nevecode-vscode-0.2.0.vsix --force
 
 | Chave | Padrão | Descrição |
 |---|---|---|
-| `nevecode.launchCommand` | `openclaude` | Comando executado ao iniciar no terminal |
+| `nevecode.launchCommand` | `nevecode` | Comando executado ao iniciar no terminal |
 | `nevecode.terminalName` | `Neve Code` | Nome da aba do terminal integrado |
 | `nevecode.useOpenAIShim` | `false` | Define `CLAUDE_CODE_USE_OPENAI=1` (ative para llama.cpp/Ollama) |
-| `nevecode.permissionMode` | `acceptEdits` | Modo de permissão: `default`, `acceptEdits`, `bypassPermissions` ou `plan` |
+| `nevecode.permissionMode` | `default` | Modo de permissão: `default` (pede aprovação) ou `bypassPermissions` |
 
 ---
 

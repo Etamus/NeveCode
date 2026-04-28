@@ -1,7 +1,7 @@
 """
 llamacpp_provider.py
 --------------------
-Adds native llama.cpp (llama-server) support to openclaude.
+Adds native llama.cpp (llama-server) support to nevecode.
 Routes requests to a locally-running llama-server instance that exposes
 an OpenAI-compatible API at http://localhost:8080.
 

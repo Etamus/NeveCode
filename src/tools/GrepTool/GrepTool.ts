@@ -1,3 +1,6 @@
+import { readdir, readFile, stat } from 'fs/promises'
+import { extname, join, relative } from 'path'
+import picomatch from 'picomatch'
 import { z } from 'zod/v4'
 import type { ValidationResult } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
@@ -18,7 +21,7 @@ import {
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
 import { getGlobExclusionsForPluginCache } from '../../utils/plugins/orphanedPluginFilter.js'
-import { ripGrep } from '../../utils/ripgrep.js'
+import { ripGrep, RipgrepUnavailableError } from '../../utils/ripgrep.js'
 import { semanticBoolean } from '../../utils/semanticBoolean.js'
 import { semanticNumber } from '../../utils/semanticNumber.js'
 import { plural } from '../../utils/stringUtils.js'
@@ -106,6 +109,234 @@ const VCS_DIRECTORIES_TO_EXCLUDE = [
 // 250 is generous enough for exploratory searches while preventing context bloat.
 // Pass head_limit=0 explicitly for unlimited.
 const DEFAULT_HEAD_LIMIT = 250
+const NATIVE_GREP_MAX_FILE_BYTES = 2 * 1024 * 1024
+const NATIVE_GREP_EXCLUDED_DIRS = new Set<string>([
+  ...VCS_DIRECTORIES_TO_EXCLUDE,
+  'node_modules',
+  '.venv',
+  'venv',
+  '__pycache__',
+  'llama-bin',
+])
+
+const TYPE_EXTENSIONS: Record<string, string[]> = {
+  js: ['.js', '.jsx', '.mjs', '.cjs'],
+  ts: ['.ts', '.tsx', '.mts', '.cts'],
+  py: ['.py'],
+  rust: ['.rs'],
+  go: ['.go'],
+  java: ['.java'],
+  cpp: ['.cc', '.cpp', '.cxx', '.hpp', '.hh', '.hxx'],
+  c: ['.c', '.h'],
+  cs: ['.cs'],
+  php: ['.php'],
+  rb: ['.rb'],
+  swift: ['.swift'],
+  kt: ['.kt', '.kts'],
+  json: ['.json'],
+  md: ['.md', '.markdown'],
+  html: ['.html', '.htm'],
+  css: ['.css'],
+  yaml: ['.yaml', '.yml'],
+}
+
+function toSlashPath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
+function isRipgrepMissing(error: unknown): boolean {
+  return (
+    error instanceof RipgrepUnavailableError ||
+    (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT')
+  )
+}
+
+function splitGlobPatterns(glob: string | undefined): string[] {
+  if (!glob) return []
+  const globPatterns: string[] = []
+  const rawPatterns = glob.split(/\s+/)
+
+  for (const rawPattern of rawPatterns) {
+    if (rawPattern.includes('{') && rawPattern.includes('}')) {
+      globPatterns.push(rawPattern)
+    } else {
+      globPatterns.push(...rawPattern.split(',').filter(Boolean))
+    }
+  }
+
+  return globPatterns.filter(Boolean)
+}
+
+function compileSearchRegex(
+  pattern: string,
+  caseInsensitive: boolean,
+  multiline: boolean,
+): RegExp {
+  const flags = `g${caseInsensitive ? 'i' : ''}${multiline ? 'ms' : 'm'}`
+  return new RegExp(pattern, flags)
+}
+
+function normalizeIgnorePattern(pattern: string): string {
+  return toSlashPath(pattern.replace(/^!/, '').replace(/^\*\*\//, ''))
+}
+
+function matchesType(filePath: string, type: string | undefined): boolean {
+  if (!type) return true
+  const normalizedType = type.toLowerCase()
+  const extensions = TYPE_EXTENSIONS[normalizedType]
+  if (!extensions) return true
+  return extensions.includes(extname(filePath).toLowerCase())
+}
+
+function isLikelyBinary(buffer: Buffer): boolean {
+  return buffer.subarray(0, Math.min(buffer.length, 8000)).includes(0)
+}
+
+async function collectNativeSearchFiles(
+  absolutePath: string,
+  globPatterns: string[],
+  type: string | undefined,
+  ignorePatterns: string[],
+  pluginExclusions: string[],
+  abortSignal: AbortSignal,
+): Promise<string[]> {
+  const rootStat = await stat(absolutePath)
+  const searchRoot = rootStat.isDirectory() ? absolutePath : join(absolutePath, '..')
+  const includeMatchers = globPatterns.map(pattern =>
+    picomatch(pattern, { dot: true, windows: false }),
+  )
+  const ignoreMatchers = [...ignorePatterns, ...pluginExclusions]
+    .map(normalizeIgnorePattern)
+    .filter(Boolean)
+    .map(pattern => picomatch(pattern, { dot: true, windows: false }))
+  const files: string[] = []
+
+  async function visit(filePath: string): Promise<void> {
+    if (abortSignal.aborted) return
+    let entryStat
+    try {
+      entryStat = await stat(filePath)
+    } catch {
+      return
+    }
+
+    const relPath = toSlashPath(relative(searchRoot, filePath))
+    const name = filePath.split(/[\\/]/).pop() || filePath
+
+    if (entryStat.isDirectory()) {
+      if (NATIVE_GREP_EXCLUDED_DIRS.has(name)) return
+      if (ignoreMatchers.some(matchesIgnore => matchesIgnore(relPath) || matchesIgnore(`${relPath}/`))) return
+      let entries
+      try {
+        entries = await readdir(filePath)
+      } catch {
+        return
+      }
+      for (const entry of entries) {
+        await visit(join(filePath, entry))
+      }
+      return
+    }
+
+    if (!entryStat.isFile()) return
+    if (entryStat.size > NATIVE_GREP_MAX_FILE_BYTES) return
+    if (!matchesType(filePath, type)) return
+    if (ignoreMatchers.some(matchesIgnore => matchesIgnore(relPath))) return
+    if (includeMatchers.length > 0 && !includeMatchers.some(matchesInclude => matchesInclude(relPath) || matchesInclude(name))) return
+    files.push(filePath)
+  }
+
+  await visit(absolutePath)
+  return files
+}
+
+async function nativeGrepFallback(
+  {
+    absolutePath,
+    pattern,
+    glob,
+    type,
+    outputMode,
+    caseInsensitive,
+    showLineNumbers,
+    contextBefore,
+    contextAfter,
+    contextBoth,
+    multiline,
+    ignorePatterns,
+    pluginExclusions,
+    abortSignal,
+  }: {
+    absolutePath: string
+    pattern: string
+    glob: string | undefined
+    type: string | undefined
+    outputMode: 'content' | 'files_with_matches' | 'count'
+    caseInsensitive: boolean
+    showLineNumbers: boolean
+    contextBefore: number | undefined
+    contextAfter: number | undefined
+    contextBoth: number | undefined
+    multiline: boolean
+    ignorePatterns: string[]
+    pluginExclusions: string[]
+    abortSignal: AbortSignal
+  },
+): Promise<string[]> {
+  const regex = compileSearchRegex(pattern, caseInsensitive, multiline)
+  const files = await collectNativeSearchFiles(
+    absolutePath,
+    splitGlobPatterns(glob),
+    type,
+    ignorePatterns,
+    pluginExclusions,
+    abortSignal,
+  )
+  const results: string[] = []
+
+  for (const file of files) {
+    if (abortSignal.aborted) break
+    let buffer
+    try {
+      buffer = await readFile(file)
+    } catch {
+      continue
+    }
+    if (isLikelyBinary(buffer)) continue
+    const text = buffer.toString('utf8')
+    regex.lastIndex = 0
+
+    if (outputMode === 'files_with_matches') {
+      if (regex.test(text)) results.push(file)
+      continue
+    }
+
+    if (outputMode === 'count') {
+      const count = [...text.matchAll(regex)].length
+      if (count > 0) results.push(`${toRelativePath(file)}:${count}`)
+      continue
+    }
+
+    const lines = text.split(/\r?\n/)
+    const before = contextBoth ?? contextBefore ?? 0
+    const after = contextBoth ?? contextAfter ?? 0
+    const emitted = new Set<number>()
+    for (let i = 0; i < lines.length; i++) {
+      regex.lastIndex = 0
+      if (!regex.test(lines[i]!)) continue
+      const start = Math.max(0, i - before)
+      const end = Math.min(lines.length - 1, i + after)
+      for (let lineIndex = start; lineIndex <= end; lineIndex++) {
+        if (emitted.has(lineIndex)) continue
+        emitted.add(lineIndex)
+        const linePrefix = showLineNumbers ? `${lineIndex + 1}:` : ''
+        results.push(`${toRelativePath(file)}:${linePrefix}${lines[lineIndex]}`)
+      }
+    }
+  }
+
+  return results
+}
 
 function applyHeadLimit<T>(
   items: T[],
@@ -159,7 +390,7 @@ type Output = z.infer<OutputSchema>
 
 export const GrepTool = buildTool({
   name: GREP_TOOL_NAME,
-  searchHint: 'search file contents with regex (ripgrep)',
+  searchHint: 'search file contents with regex',
   // 20K chars - tool result persistence threshold
   maxResultSizeChars: 20_000,
   strict: true,
@@ -389,21 +620,7 @@ export const GrepTool = buildTool({
     }
 
     if (glob) {
-      // Split on commas and spaces, but preserve patterns with braces
-      const globPatterns: string[] = []
-      const rawPatterns = glob.split(/\s+/)
-
-      for (const rawPattern of rawPatterns) {
-        // If pattern contains braces, don't split further
-        if (rawPattern.includes('{') && rawPattern.includes('}')) {
-          globPatterns.push(rawPattern)
-        } else {
-          // Split on commas for patterns without braces
-          globPatterns.push(...rawPattern.split(',').filter(Boolean))
-        }
-      }
-
-      for (const globPattern of globPatterns.filter(Boolean)) {
+      for (const globPattern of splitGlobPatterns(glob)) {
         args.push('--glob', globPattern)
       }
     }
@@ -427,9 +644,10 @@ export const GrepTool = buildTool({
     }
 
     // Exclude orphaned plugin version directories
-    for (const exclusion of await getGlobExclusionsForPluginCache(
+    const pluginExclusions = await getGlobExclusionsForPluginCache(
       absolutePath,
-    )) {
+    )
+    for (const exclusion of pluginExclusions) {
       args.push('--glob', exclusion)
     }
 
@@ -438,7 +656,28 @@ export const GrepTool = buildTool({
     // We don't use AbortController for timeout to avoid interrupting the agent loop
     // If ripgrep times out, it throws RipgrepTimeoutError which propagates up
     // so Claude knows the search didn't complete (rather than thinking there were no matches)
-    const results = await ripGrep(args, absolutePath, abortController.signal)
+    let results: string[]
+    try {
+      results = await ripGrep(args, absolutePath, abortController.signal)
+    } catch (error) {
+      if (!isRipgrepMissing(error)) throw error
+      results = await nativeGrepFallback({
+        absolutePath,
+        pattern,
+        glob,
+        type,
+        outputMode: output_mode,
+        caseInsensitive: case_insensitive,
+        showLineNumbers: show_line_numbers,
+        contextBefore: context_before,
+        contextAfter: context_after,
+        contextBoth: context ?? context_c,
+        multiline,
+        ignorePatterns,
+        pluginExclusions,
+        abortSignal: abortController.signal,
+      })
+    }
 
     if (output_mode === 'content') {
       // For content mode, results are the actual content lines

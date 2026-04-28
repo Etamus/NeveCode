@@ -14,7 +14,7 @@ afterEach(async () => {
 })
 
 async function makeProjectDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'openclaude-wiki-init-'))
+  const dir = await mkdtemp(join(tmpdir(), 'nevecode-wiki-init-'))
   tempDirs.push(dir)
   return dir
 }
@@ -26,17 +26,17 @@ test('initializeWiki creates the expected wiki scaffold', async () => {
 
   expect(result.alreadyExisted).toBe(false)
   expect(result.createdFiles).toEqual([
-    join('.openclaude', 'wiki', 'schema.md'),
-    join('.openclaude', 'wiki', 'index.md'),
-    join('.openclaude', 'wiki', 'log.md'),
-    join('.openclaude', 'wiki', 'pages', 'architecture.md'),
+    join('.nevecode', 'wiki', 'schema.md'),
+    join('.nevecode', 'wiki', 'index.md'),
+    join('.nevecode', 'wiki', 'log.md'),
+    join('.nevecode', 'wiki', 'pages', 'architecture.md'),
   ])
   expect(await readFile(paths.schemaFile, 'utf8')).toContain(
-    '# OpenClaude Wiki Schema',
+    '# NeveCode Wiki Schema',
   )
   expect(await readFile(paths.indexFile, 'utf8')).toContain('Wiki')
   expect(await readFile(paths.logFile, 'utf8')).toContain(
-    'Wiki initialized by OpenClaude',
+    'Wiki initialized by NeveCode',
   )
   expect(await readFile(join(paths.pagesDir, 'architecture.md'), 'utf8')).toContain(
     '# Architecture',

@@ -205,7 +205,7 @@ function readWorkspaceProfile(profilePath) {
 
 async function collectControlCenterState() {
   const configured = vscode.workspace.getConfiguration('nevecode');
-  const launchCommand = configured.get('launchCommand', 'openclaude');
+  const launchCommand = configured.get('launchCommand', 'nevecode');
   const terminalName = configured.get('terminalName', 'Neve Code');
   const shimEnabled = configured.get('useOpenAIShim', false);
   const executable = getExecutableFromCommand(launchCommand);
@@ -265,7 +265,7 @@ async function collectControlCenterState() {
 async function launchNeveCode(options = {}) {
   const { requireWorkspace = false } = options;
   const configured = vscode.workspace.getConfiguration('nevecode');
-  const launchCommand = configured.get('launchCommand', 'openclaude');
+  const launchCommand = configured.get('launchCommand', 'nevecode');
   const terminalName = configured.get('terminalName', 'Neve Code');
   const shimEnabled = configured.get('useOpenAIShim', false);
   const executable = getExecutableFromCommand(launchCommand);

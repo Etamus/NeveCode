@@ -43,16 +43,3 @@ This document regulates the use, access, distribution, and any form of interacti
 8.2. If the user does not agree with any clause, they must immediately cease all use of the software.
 
 This document has legal validity and governs the use of the software in all territories subject to copyright protection.
-
-NOTICE
-
-This repository contains code derived from Anthropic's Claude Code CLI.
-
-The original Claude Code source is proprietary software:
-  Copyright (c) Anthropic PBC. All rights reserved.
-  Subject to Anthropic's Commercial Terms of Service.
-
-The underlying derived code remains subject to Anthropic's copyright.
-This project does not have Anthropic's authorization to distribute
-their proprietary source. Users and contributors should evaluate their
-own legal position.

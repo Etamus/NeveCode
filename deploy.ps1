@@ -1,5 +1,5 @@
-# Deploy extensao NevCode para a extensao instalada no VS Code
-$src = "D:\Openclaude\vscode-extension\nevecode-vscode\src"
+# Deploy extensao NeveCode para a extensao instalada no VS Code
+$src = Join-Path $PSScriptRoot "vscode-extension\nevecode-vscode\src"
 $dst = "C:\Users\Administrador\.vscode\extensions\devnull-bootloader.nevecode-vscode-0.2.0\src"
 
 $files = @(
