@@ -302,18 +302,21 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     /* ── Change review (manter/desfazer alterações) ── */
     .change-review {
       display: none; align-items: center; gap: 6px;
-      margin: 0 8px 3px; padding: 2px 6px; border-radius: 6px;
+      margin: 0 8px 3px; padding: 3px 6px; border-radius: 6px;
       border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.22));
       background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
       box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
     .change-review.visible { display: flex; }
-    .change-review-icon { color: var(--vscode-gitDecoration-modifiedResourceForeground, #cca700); display: flex; align-items: center; }
     .change-review-text { flex: 1; min-width: 0; font-size: 11px; color: var(--vscode-foreground); line-height: 1; text-align: left; }
-    .change-review-title { font-weight: 600; margin-bottom: 0; }
+    .change-review-title { display: flex; align-items: center; gap: 7px; font-weight: 600; margin-bottom: 0; overflow: hidden; white-space: nowrap; }
+    .change-review-label { overflow: hidden; text-overflow: ellipsis; }
+    .change-review-stats { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-weight: 700; }
+    .change-review-added { color: var(--vscode-gitDecoration-addedResourceForeground, #73c991); }
+    .change-review-removed { color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c); }
     .change-review-files { color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .change-review-actions { display: flex; gap: 5px; flex-shrink: 0; }
-    .change-review-btn { width: 66px; min-height: 20px; padding: 1px 0; border-radius: 4px; border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); font: inherit; font-size: 11px; cursor: pointer; text-align: center; }
+    .change-review-btn { width: 66px; min-height: 21px; padding: 2px 0; border-radius: 4px; border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); font: inherit; font-size: 11px; cursor: pointer; text-align: center; }
     .change-review-btn.keep { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.16)); color: var(--vscode-foreground); }
     .change-review-btn.keep:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.22)); }
     .change-review-btn.undo { background: transparent; color: var(--vscode-foreground); border-color: var(--vscode-editorWidget-border, rgba(128,128,128,0.4)); }
@@ -714,11 +717,12 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   function renderChangeReview(info) {
     if (!changeReview || !info || !info.id) return;
     const fileCount = Number(info.fileCount || 0);
+    const addedLines = Math.max(0, Number(info.addedLines || 0));
+    const removedLines = Math.max(0, Number(info.removedLines || 0));
     const fileLabel = fileCount === 1 ? '1 arquivo alterado' : fileCount + ' arquivos alterados';
     changeReview.dataset.id = info.id;
     changeReview.innerHTML =
-      '<div class="change-review-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></div>' +
-      '<div class="change-review-text"><div class="change-review-title">' + escapeForMd(fileLabel) + '</div></div>' +
+      '<div class="change-review-text"><div class="change-review-title"><span class="change-review-label">' + escapeForMd(fileLabel) + '</span><span class="change-review-stats"><span class="change-review-added">+' + addedLines + '</span><span class="change-review-removed">-' + removedLines + '</span></span></div></div>' +
       '<div class="change-review-actions"><button class="change-review-btn undo" data-action="undo">Desfazer</button><button class="change-review-btn keep" data-action="keep">Manter</button></div>';
     changeReview.classList.add('visible');
     changeReview.querySelectorAll('.change-review-btn').forEach(btn => {
@@ -1371,7 +1375,6 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   let _taskClearTimer = null;
 
   const TASK_CHECK_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:var(--vscode-testing-iconPassed,#73c991)"><polyline points="20 6 9 17 4 12"/></svg>';
-  const TASK_ERROR_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--vscode-errorForeground)"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   const CHEVRON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 
   function _taskPanelBuild(tasks) {
@@ -1420,10 +1423,72 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
     if (!list) return;
     const active = list.querySelector('.task-item.active');
     if (active) {
-      active.className = 'task-item ' + (isError ? 'error' : 'done');
+      // Erros de tool são transitórios e o agente tenta corrigir sozinho.
+      // O painel de tarefas nunca deve exibir X/falha; no máximo deixa a etapa
+      // ativa até uma ação bem-sucedida ou conclui com check no encerramento.
+      active.className = 'task-item done';
       const icon = active.querySelector('.task-item-icon');
-      if (icon) icon.innerHTML = isError ? TASK_ERROR_SVG : TASK_CHECK_SVG;
+      if (icon) icon.innerHTML = TASK_CHECK_SVG;
     }
+  }
+
+  function _taskActiveIndex() {
+    const list = document.getElementById('taskList');
+    if (!list) return -1;
+    const active = list.querySelector('.task-item.active');
+    if (!active) return -1;
+    return Number(active.dataset.idx || -1);
+  }
+
+  function _taskPendingCount() {
+    const list = document.getElementById('taskList');
+    return list ? list.querySelectorAll('.task-item.pending').length : 0;
+  }
+
+  function _taskAdvanceOne(isError) {
+    const idx = _taskActiveIndex();
+    if (!_plan || idx < 0) return false;
+    // A última etapa é sempre finalização/resumo. Ela só deve concluir quando
+    // a resposta realmente encerrar, não ao receber o resultado de uma tool.
+    if (idx >= _plan.length - 1) return false;
+    _taskCompleteActive(false);
+    _planNevNextSeen++;
+    _taskActivateNext();
+    return true;
+  }
+
+  function _taskAdvanceForToolResult(toolName, isError) {
+    if (!_plan) return;
+    const name = String(toolName || '').toLowerCase();
+    if (!name || ['todowrite', 'todoread', 'askuserquestion', 'exitplanmode'].includes(name)) return;
+    if (isError) return;
+
+    const idx = _taskActiveIndex();
+    if (idx < 0) return;
+    const inspectTools = ['read', 'grep', 'glob', 'ls', 'notebookread'];
+    const editTools = ['write', 'edit', 'multiedit', 'notebookedit'];
+    const validateTools = ['bash', 'powershell'];
+
+    if (inspectTools.includes(name)) {
+      if (idx === 0) _taskAdvanceOne(false);
+      return;
+    }
+
+    if (editTools.includes(name)) {
+      // Se a primeira edição chegou antes de uma tool de leitura completar,
+      // considere a análise concluída e avance também a etapa de implementação.
+      if (idx === 0 && _taskPendingCount() > 0) _taskAdvanceOne(false);
+      _taskAdvanceOne(false);
+      return;
+    }
+
+    if (validateTools.includes(name)) {
+      _taskAdvanceOne(false);
+      return;
+    }
+
+    // Fallback conservador: a primeira tool confirma que a tarefa inicial começou/terminou.
+    if (idx === 0) _taskAdvanceOne(false);
   }
 
   // Remove metadados internos e lixo de raciocínio do texto exibido
@@ -1469,6 +1534,12 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   function _taskProcessNevNext(text) {
     const count = (text.match(/<nevnext>/g) || []).length;
     while (_planNevNextSeen < count) {
+      const idx = _taskActiveIndex();
+      if (_plan && idx >= _plan.length - 1) {
+        // Nunca conclua a etapa final por token de transição; aguarde stream_end.
+        _planNevNextSeen = count;
+        break;
+      }
       _taskCompleteActive(false);
       _taskActivateNext();
       _planNevNextSeen++;
@@ -1717,7 +1788,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
           if (msg.aborted) {
             _taskClear(0); // abortado: limpa painel sem marcar concluído
           } else if (_hadError) {
-            _taskCompleteActive(true);
+            _taskCompleteActive(false);
           } else if (_plan) {
             // Só marcar done se há um plano ativo — evita marcar tudo no exit limpo
             _taskPanelMarkDone();
@@ -1758,8 +1829,8 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       }
 
       case 'tool_result':
-        if (msg.isError) _hadError = true;
         updateToolResult(msg.toolUseId, msg.content, msg.isError);
+        _taskAdvanceForToolResult(msg.toolName, msg.isError);
         break;
 
       case 'tool_input_ready':

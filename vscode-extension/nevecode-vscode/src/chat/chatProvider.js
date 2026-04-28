@@ -59,6 +59,32 @@ async function snapshotWorkspaceFiles() {
   return { root, files: snapshot };
 }
 
+function splitTextLines(bytes) {
+  if (!bytes || bytes.length === 0) return [];
+  const lines = bytes.toString('utf8').split(/\r\n|\r|\n/);
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+
+function countChangedLines(beforeBytes, afterBytes) {
+  const beforeLines = splitTextLines(beforeBytes);
+  const afterLines = splitTextLines(afterBytes);
+  let start = 0;
+  while (start < beforeLines.length && start < afterLines.length && beforeLines[start] === afterLines[start]) {
+    start++;
+  }
+  let beforeEnd = beforeLines.length - 1;
+  let afterEnd = afterLines.length - 1;
+  while (beforeEnd >= start && afterEnd >= start && beforeLines[beforeEnd] === afterLines[afterEnd]) {
+    beforeEnd--;
+    afterEnd--;
+  }
+  return {
+    added: Math.max(0, afterEnd - start + 1),
+    removed: Math.max(0, beforeEnd - start + 1),
+  };
+}
+
 async function diffWorkspaceSnapshot(before) {
   if (!before || !before.root) return [];
   const files = await vscode.workspace.findFiles(
@@ -75,16 +101,21 @@ async function diffWorkspaceSnapshot(before) {
   for (const [path, prev] of before.files.entries()) {
     const next = after.get(path);
     if (!next) {
-      if (prev.bytes) changes.push({ type: 'deleted', path, before: prev.bytes });
+      if (prev.bytes) {
+        const lineDelta = countChangedLines(prev.bytes, null);
+        changes.push({ type: 'deleted', path, before: prev.bytes, added: lineDelta.added, removed: lineDelta.removed });
+      }
       continue;
     }
     if (prev.bytes && next.bytes && !prev.bytes.equals(next.bytes)) {
-      changes.push({ type: 'modified', path, before: prev.bytes });
+      const lineDelta = countChangedLines(prev.bytes, next.bytes);
+      changes.push({ type: 'modified', path, before: prev.bytes, added: lineDelta.added, removed: lineDelta.removed });
     }
   }
   for (const [path, next] of after.entries()) {
     if (!before.files.has(path)) {
-      changes.push({ type: 'created', path, before: null });
+      const lineDelta = countChangedLines(null, next.bytes);
+      changes.push({ type: 'created', path, before: null, added: lineDelta.added, removed: lineDelta.removed });
     }
   }
   return changes;
@@ -509,6 +540,8 @@ class ChatController {
       id,
       fileCount: files.length,
       changeCount: changes.length,
+      addedLines: changes.reduce((sum, change) => sum + Number(change.added || 0), 0),
+      removedLines: changes.reduce((sum, change) => sum + Number(change.removed || 0), 0),
       files: files.slice(0, 8).map(f => vscode.workspace.asRelativePath(f)),
     });
   }
@@ -722,6 +755,7 @@ class ChatController {
             this._broadcast({
               type: 'tool_result',
               toolUseId: block.tool_use_id,
+              toolName: this._toolUseNames.get(block.tool_use_id) || null,
               content: resultText.slice(0, 2000) || '(done)',
               isError: block.is_error || false,
             });
