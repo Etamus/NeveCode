@@ -30,6 +30,7 @@ const CHANGE_SNAPSHOT_EXCLUDE = '**/{.git,node_modules,dist,llama-bin,models,.ve
 const PLANNING_REQUEST_TIMEOUT_MS = 12000;
 const INITIAL_TURN_WATCHDOG_MS = 180000;
 const ACTIVE_TURN_WATCHDOG_MS = 300000;
+const TOOL_ERROR_ABORT_THRESHOLD = 6;
 
 function getWorkspaceRoot() {
   const folders = vscode.workspace.workspaceFolders;
@@ -789,9 +790,9 @@ class ChatController {
             // Loop breaker: track consecutive tool errors
             if (block.is_error) {
               this._consecutiveToolErrors++;
-              if (this._consecutiveToolErrors >= 3) {
+              if (this._consecutiveToolErrors >= TOOL_ERROR_ABORT_THRESHOLD) {
                 this._consecutiveToolErrors = 0;
-                const errMsg = 'Abortado: 3 erros consecutivos de ferramenta. Tente reformular a tarefa.';
+                const errMsg = 'Abortado: ' + TOOL_ERROR_ABORT_THRESHOLD + ' erros consecutivos de ferramenta. Tente reformular a tarefa.';
                 this._broadcast({ type: 'error', message: errMsg });
                 this.abort();
                 return;

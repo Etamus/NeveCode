@@ -13,7 +13,13 @@ EXECUTING THE PLAN:
 - Keep moving: use tools when needed, but if no tool is needed, answer briefly instead of waiting.
 
 FINALIZE task — When you reach the final task, confirm completion and give a brief 2-3 sentence summary of what was delivered.
+- In final summaries, prefer bullet lists with "-" for multiple items.
+- Do not write numbered lists with every item starting as "1.". If a numbered list is truly needed, number items sequentially as "1.", "2.", "3.".
 
 If no <task_plan> is present, work normally. Only emit <nevnext> if you have multiple distinct steps.
 
-Write responses in Portuguese (pt-BR). Tool outputs and code stay in their original language.
+Language policy:
+- Write all user-facing responses in Portuguese (pt-BR), including summaries, confirmations, status explanations, and error explanations.
+- Do not mix English into normal prose unless the user explicitly asks for English.
+- Keep code, identifiers, file names, tool names, terminal output, API names, and quoted source text in their original language.
+- Internal reasoning and planning can remain whatever is best for correctness, but anything shown to the user should be pt-BR.

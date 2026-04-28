@@ -787,6 +787,21 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
   const toolResultMap = {};
 
   /* ── Markdown renderer ── */
+  function normalizeRepeatedOneLists(text) {
+    if (!text) return '';
+    const lines = String(text).split('\\n');
+    const oneItemCount = lines.filter(line => /^[ \\t]*1\\.\\s+\\S/.test(line)).length;
+    const sequentialItemCount = lines.filter(line => /^[ \\t]*[2-9]\\d*\\.\\s+\\S/.test(line)).length;
+    // Muitos modelos locais usam a convenção Markdown "1." em todos os itens.
+    // Como o renderer é simples e pode quebrar listas em blocos separados, isso
+    // aparece para o usuário como vários "1.". Quando não há numeração real,
+    // exiba como bullets para manter o resumo limpo e estável.
+    if (oneItemCount >= 2 && sequentialItemCount === 0) {
+      return lines.map(line => line.replace(/^([ \\t]*)1\\.\\s+/, '$1- ')).join('\\n');
+    }
+    return String(text);
+  }
+
   function renderMarkdown(text) {
     if (!text) return '';
 
@@ -811,6 +826,7 @@ function renderChatHtml({ nonce, platform, logoUri, cspSource }) {
       codeBlocks.push(block);
       return codeSentinelPrefix + (codeBlocks.length - 1) + codeSentinelSuffix;
     });
+    raw = normalizeRepeatedOneLists(raw);
 
     // Step 2: escape HTML special chars for remaining text
     let html = raw
